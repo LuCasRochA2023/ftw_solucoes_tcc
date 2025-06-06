@@ -55,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
             debugPrint('URL da foto encontrada: $photoUrl');
 
             if (photoUrl != null && photoUrl.toString().isNotEmpty) {
-              // Limpar e validar a URL
               String cleanUrl = photoUrl.toString().trim();
               // Remover quebras de linha e espaços extras
               cleanUrl = cleanUrl.replaceAll(RegExp(r'[\n\r\s]+'), '');
@@ -249,7 +248,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-            const Divider(),
             ListTile(
               leading: const Icon(Icons.settings),
               title: Text(
@@ -265,6 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             SettingsScreen(authService: widget.authService)));
               },
             ),
+            const Divider(),
             ListTile(
               leading: const Icon(Icons.logout),
               title: Text(
