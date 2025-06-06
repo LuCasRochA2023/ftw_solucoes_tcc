@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/screens/login_screen.dart';
-import 'package:ftw_solucoes/screens/register_screen.dart';
+import 'package:ftw_solucoes/screens/settings_screen.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
@@ -8,7 +8,6 @@ import 'package:ftw_solucoes/screens/services_screen.dart';
 import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -20,7 +19,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   String _userName = '';
   String? _photoUrl;
 
@@ -253,17 +251,18 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.work),
-              title: const Text('Serviços'),
+              leading: const Icon(Icons.settings),
+              title: Text(
+                'Configurações',
+                style: GoogleFonts.poppins(),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        ServicesScreen(authService: widget.authService),
-                  ),
-                );
+                    context,
+                    MaterialPageRoute(
+                        builder: (context) =>
+                            SettingsScreen(authService: widget.authService)));
               },
             ),
             ListTile(

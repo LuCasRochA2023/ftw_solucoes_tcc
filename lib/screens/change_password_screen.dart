@@ -37,7 +37,6 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         throw Exception('Usuário não autenticado');
       }
 
-      // Reauthenticate user
       final credential = EmailAuthProvider.credential(
         email: user.email!,
         password: _currentPasswordController.text,
@@ -89,7 +88,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
         title: const Text('Alterar Senha'),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: EdgeInsets.all(16),
               child: Form(
@@ -185,7 +184,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                     const SizedBox(height: 24),
                     ElevatedButton(
                       onPressed: _changePassword,
-                      child: Text('Alterar Senha'),
+                      child: const Text('Alterar Senha'),
                     ),
                   ],
                 ),

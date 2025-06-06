@@ -88,11 +88,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           await user.reauthenticateWithCredential(credential);
 
-          // Delete user data from Firestore
           await _firestore.collection('users').doc(user.uid).delete();
-          // Delete user authentication
           await user.delete();
-          // Navigate to login screen
           if (mounted) {
             Navigator.of(context).pushNamedAndRemoveUntil(
               '/login',

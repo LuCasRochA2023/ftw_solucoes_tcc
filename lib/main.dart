@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:provider/provider.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'dart:io' show Platform;
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -9,14 +8,8 @@ import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/service_history_screen.dart';
-import 'screens/register_screen.dart';
-import 'screens/services_screen.dart';
-import 'services/auth_state_service.dart';
-import 'providers/theme_provider.dart';
+
 import 'services/auth_service.dart';
-import 'theme/app_theme.dart';
 
 Future<void> initializeFirebase() async {
   try {
