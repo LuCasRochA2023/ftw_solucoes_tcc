@@ -127,129 +127,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _showChangePasswordDialog() async {
-    final TextEditingController currentPasswordController =
-        TextEditingController();
-    final TextEditingController newPasswordController = TextEditingController();
-    final TextEditingController confirmPasswordController =
-        TextEditingController();
-
-    final bool? confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'Alterar Senha',
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: currentPasswordController,
-              decoration: InputDecoration(
-                labelText: 'Senha Atual',
-                labelStyle: GoogleFonts.poppins(),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: newPasswordController,
-              decoration: InputDecoration(
-                labelText: 'Nova Senha',
-                labelStyle: GoogleFonts.poppins(),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: confirmPasswordController,
-              decoration: InputDecoration(
-                labelText: 'Confirmar Nova Senha',
-                labelStyle: GoogleFonts.poppins(),
-              ),
-              obscureText: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: Text(
-              'Cancelar',
-              style: GoogleFonts.poppins(),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (newPasswordController.text !=
-                  confirmPasswordController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('As senhas não coincidem'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              Navigator.of(context).pop(true);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Alterar',
-              style: GoogleFonts.poppins(),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      setState(() => _isLoading = true);
-      try {
-        final user = _auth.currentUser;
-        if (user != null) {
-          final credential = EmailAuthProvider.credential(
-            email: user.email!,
-            password: currentPasswordController.text,
-          );
-          await user.reauthenticateWithCredential(credential);
-          await user.updatePassword(newPasswordController.text);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Senha alterada com sucesso'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Erro ao alterar senha: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
-      }
-    }
-  }
-
-  void _viewServiceHistory() {
-    Navigator.pushNamed(context, '/service-history');
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -267,8 +144,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 ListTile(
-                  leading: Icon(Icons.person),
-                  title: Text('Perfil'),
+                  leading: const Icon(Icons.person),
+                  title: const Text('Perfil'),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -279,30 +156,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.lock),
-                  title: Text('Alterar Senha'),
+                  leading: const Icon(Icons.lock),
+                  title: const Text('Alterar Senha'),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => ChangePasswordScreen()),
+                          builder: (context) => const ChangePasswordScreen()),
                     );
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.history),
-                  title: Text('Histórico de Serviços'),
+                  leading: const Icon(Icons.history),
+                  title: const Text('Histórico de Serviços'),
                   onTap: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => ServiceHistoryScreen()),
+                          builder: (context) => const ServiceHistoryScreen()),
                     );
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.delete, color: Colors.red),
-                  title: Text('Excluir Conta',
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Excluir Conta',
                       style: TextStyle(color: Colors.red)),
                   onTap: _showDeleteAccountDialog,
                 ),

@@ -13,6 +13,8 @@ import '../screens/login_screen.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ProfileScreen extends StatefulWidget {
   final AuthService authService;
@@ -46,6 +48,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   StreamSubscription<User?>? _authStateSubscription;
   bool _isEditing = false;
   bool _isImageLoading = false;
+  String? _cepError;
+  bool _streetEnabled = false;
+  bool _neighborhoodEnabled = false;
 
   final _cpfFormatter = MaskTextInputFormatter(
     mask: '###.###.###-##',
@@ -288,33 +293,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _searchCep() async {
-    final cep = _cepController.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final cep = _cepController.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (cep.length != 8) return;
 
-    if (cep.length != 8) {
-      _showErrorMessage('CEP inválido');
-      return;
-    }
-
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _cepError = null;
+      _streetEnabled = false;
+      _neighborhoodEnabled = false;
+    });
 
     try {
-      final dio = Dio();
-      final response = await dio.get('https://viacep.com.br/ws/$cep/json/');
+      final response = await http.get(
+        Uri.parse('https://viacep.com.br/ws/$cep/json/'),
+      );
 
-      if (response.data['erro'] == true) {
-        throw Exception('CEP não encontrado');
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['erro'] == true) {
+          setState(() {
+            _cepError = 'CEP não encontrado';
+          });
+          return;
+        }
+
+        setState(() {
+          _streetController.text = data['logradouro'] ?? '';
+          _neighborhoodController.text = data['bairro'] ?? '';
+          _cityController.text = data['localidade'] ?? '';
+          _stateController.text = data['uf'] ?? '';
+
+          // Se não tiver rua ou bairro, habilita a edição
+          _streetEnabled =
+              data['logradouro'] == null || data['logradouro'].isEmpty;
+          _neighborhoodEnabled =
+              data['bairro'] == null || data['bairro'].isEmpty;
+        });
+      } else {
+        setState(() {
+          _cepError = 'Erro ao buscar CEP';
+        });
       }
-
-      setState(() {
-        _streetController.text = response.data['logradouro'] ?? '';
-        _neighborhoodController.text = response.data['bairro'] ?? '';
-        _cityController.text = response.data['localidade'] ?? '';
-        _stateController.text = response.data['uf'] ?? '';
-      });
     } catch (e) {
-      _showErrorMessage(e is Exception ? e.toString() : 'Erro ao buscar CEP');
+      setState(() {
+        _cepError = 'Erro ao buscar CEP';
+      });
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -324,39 +351,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await widget.authService.updateProfile(
-        displayName: _nameController.text,
-      );
+      final user = widget.authService.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
 
-      await _firestore
-          .collection('users')
-          .doc(widget.authService.currentUser!.uid)
-          .set({
-        'cpf': _cpfController.text,
-        'phone': _phoneController.text,
+      // Preparar dados do endereço
+      final address = {
         'cep': _cepController.text,
         'street': _streetController.text,
         'number': _numberController.text,
-        'complement': _complementController.text,
         'neighborhood': _neighborhoodController.text,
         'city': _cityController.text,
         'state': _stateController.text,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Perfil atualizado com sucesso!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+      // Verificar se todos os campos do endereço estão preenchidos
+      if (address.values.any((value) => value.isEmpty)) {
+        throw Exception('Por favor, preencha todos os campos do endereço');
       }
+
+      // Atualizar dados no Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({
+        'name': _nameController.text,
+        'cpf': _cpfController.text,
+        'phone': _phoneController.text,
+        'address': address,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Atualizar nome no Firebase Auth
+      await user.updateDisplayName(_nameController.text);
+
+      setState(() {
+        _isEditing = false;
+        _showSuccessMessage('Perfil atualizado com sucesso!');
+      });
     } catch (e) {
-      _showErrorMessage('Erro ao salvar perfil');
+      _showErrorMessage(e.toString());
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _showSuccessMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+      ),
+    );
   }
 
   void _showErrorMessage(String message) {
@@ -559,72 +605,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _cepController,
-                            label: 'CEP',
-                            formatter: _cepFormatter,
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              if (value.length == 9) {
-                                _searchCep();
-                              }
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    _buildTextField(
-                      controller: _streetController,
-                      label: 'Rua',
-                      readOnly: true,
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _numberController,
-                            label: 'Número',
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _complementController,
-                            label: 'Complemento',
-                            validator: null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    _buildTextField(
-                      controller: _neighborhoodController,
-                      label: 'Bairro',
-                      readOnly: true,
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: _buildTextField(
-                            controller: _cityController,
-                            label: 'Cidade',
-                            readOnly: true,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildTextField(
-                            controller: _stateController,
-                            label: 'Estado',
-                            readOnly: true,
-                          ),
-                        ),
-                      ],
-                    ),
+                    _buildAddressFields(),
                     const SizedBox(height: 32),
                     SizedBox(
                       width: double.infinity,
@@ -654,6 +635,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _buildAddressFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextFormField(
+          controller: _cepController,
+          decoration: InputDecoration(
+            labelText: 'CEP',
+            hintText: '00000-000',
+            errorText: _cepError,
+            suffixIcon: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: _searchCep,
+                  ),
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            _cepFormatter,
+          ],
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor, informe o CEP';
+            }
+            if (value.replaceAll(RegExp(r'[^\d]'), '').length != 8) {
+              return 'CEP inválido';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _streetController,
+          decoration: const InputDecoration(
+            labelText: 'Rua',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor, informe a rua';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: TextFormField(
+                controller: _numberController,
+                decoration: const InputDecoration(
+                  labelText: 'Número',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor, informe o número';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 3,
+              child: TextFormField(
+                controller: _neighborhoodController,
+                decoration: const InputDecoration(
+                  labelText: 'Bairro',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor, informe o bairro';
+                  }
+                  return null;
+                },
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextFormField(
+                controller: _cityController,
+                decoration: const InputDecoration(
+                  labelText: 'Cidade',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor, informe a cidade';
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 2,
+              child: TextFormField(
+                controller: _stateController,
+                decoration: const InputDecoration(
+                  labelText: 'Estado',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Por favor, informe o estado';
+                  }
+                  return null;
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

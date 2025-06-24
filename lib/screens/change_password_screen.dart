@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
+  const ChangePasswordScreen({super.key});
+
   @override
   _ChangePasswordScreenState createState() => _ChangePasswordScreenState();
 }
@@ -48,7 +50,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Senha alterada com sucesso')),
+          const SnackBar(content: Text('Senha alterada com sucesso')),
         );
         Navigator.pop(context);
       }
@@ -69,7 +71,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao alterar senha')),
+          const SnackBar(content: Text('Erro ao alterar senha')),
         );
       }
     } finally {
@@ -90,7 +92,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Form(
                 key: _formKey,
                 child: Column(

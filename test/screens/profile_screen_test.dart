@@ -57,7 +57,7 @@ void main() {
   testWidgets('ProfileScreen deve mostrar botão de logout',
       (WidgetTester tester) async {
     // Arrange
-    when(mockAuthService.signOut()).thenAnswer((_) async => null);
+    when(mockAuthService.signOut()).thenAnswer((_) async {});
 
     await tester.pumpWidget(
       MaterialApp(

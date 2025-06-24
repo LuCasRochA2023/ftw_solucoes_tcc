@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../services/auth_service.dart';
 import 'payment_screen.dart';
-import 'services_screen.dart';
 import 'cars_screen.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
@@ -84,7 +83,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       );
 
       debugPrint(
-          'Checking appointments between ${startOfDay.toString()} and ${endOfDay.toString()}');
+          'Checando compromissos entre ${startOfDay.toString()} e ${endOfDay.toString()}');
 
       final querySnapshot = await FirebaseFirestore.instance
           .collection('appointments')
@@ -92,7 +91,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           .where('dateTime', isLessThan: endOfDay)
           .get();
 
-      debugPrint('Found ${querySnapshot.docs.length} appointments');
+      debugPrint('Encontrado ${querySnapshot.docs.length} compromissos');
 
       final Map<String, String> bookedSlots = {};
       for (var doc in querySnapshot.docs) {
@@ -110,8 +109,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         _bookedTimeSlots = bookedSlots;
       });
     } catch (e) {
-      debugPrint('Error loading booked time slots: $e');
-      // Show error message to user
+      debugPrint('Erro ao carregar horários : $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -176,9 +174,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _selectedTime = null; // Reset selected time when date changes
+        _selectedTime = null;
       });
-      _loadBookedTimeSlots(); // Reload booked slots for the new date
+      _loadBookedTimeSlots();
     }
   }
 
@@ -209,7 +207,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Usuário não autenticado');
 
-      // Parse selected time
       final timeParts = _selectedTime!.split(':');
       final dateTime = DateTime(
         _selectedDate.year,
@@ -221,7 +218,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       debugPrint('Checking if time slot is available: ${dateTime.toString()}');
 
-      // Simplified query that only checks for exact dateTime match and status
       final querySnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('dateTime', isEqualTo: dateTime)
@@ -241,33 +237,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
             ),
           );
 
-          // Reload booked slots to update the UI
           await _loadBookedTimeSlots();
           setState(() => _isLoading = false);
         }
         return;
       }
 
-      // Prepare appointment data
-      final appointmentData = {
-        'userId': user.uid,
-        'userEmail': user.email,
-        'service': widget.serviceTitle,
-        'dateTime': dateTime,
-        'status': 'scheduled',
-        'createdAt': FieldValue.serverTimestamp(),
-        'car': {
-          'id': _selectedCar!['id'],
-          'name': _selectedCar!['name'],
-          'model': _selectedCar!['model'],
-          'plate': _selectedCar!['plate'],
-          'color': _selectedCar!['color'],
-          if (_selectedCar!['photoUrl'] != null)
-            'photoUrl': _selectedCar!['photoUrl'],
-        },
-      };
-
-      // Show confirmation dialog
       if (mounted) {
         final bool? shouldContinue = await showDialog<bool>(
           context: context,
@@ -282,64 +257,53 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'Serviço: ${widget.serviceTitle}',
-                    style: GoogleFonts.poppins(),
-                    textAlign: TextAlign.center,
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Data: ${_dateFormat.format(_selectedDate)}',
                     style: GoogleFonts.poppins(),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Horário: $_selectedTime',
                     style: GoogleFonts.poppins(),
-                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Carro: ${_selectedCar!['name']} - ${_selectedCar!['plate']}',
+                    'Carro: ${_selectedCar!['name']} ${_selectedCar!['model']}',
                     style: GoogleFonts.poppins(),
-                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 8),
                   Text(
-                    'Deseja agendar mais algum serviço?',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
+                    'Placa: ${_selectedCar!['plate']}',
+                    style: GoogleFonts.poppins(),
                   ),
                 ],
               ),
-              actionsAlignment: MainAxisAlignment.center,
               actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(true); // Continuar agendando
-                  },
+                  onPressed: () => Navigator.of(context).pop(false),
                   child: Text(
-                    'Sim, agendar mais',
+                    'Cancelar',
                     style: GoogleFonts.poppins(
-                      color: Colors.blue,
+                      color: Colors.grey[600],
                     ),
                   ),
                 ),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(false); // Ir para pagamento
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: widget.serviceColor,
-                  ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
                   child: Text(
-                    'Não, ir para pagamento',
+                    'Confirmar',
                     style: GoogleFonts.poppins(
-                      color: Colors.white,
+                      color: widget.serviceColor,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
@@ -348,46 +312,23 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           },
         );
 
-        if (shouldContinue == null) {
-          // Dialog was dismissed
-          setState(() => _isLoading = false);
-          return;
-        }
-
-        if (shouldContinue) {
-          if (!mounted) return;
-
-          final appointments = List<Map<String, dynamic>>.from(
-              (ModalRoute.of(context)?.settings.arguments
-                      as List<Map<String, dynamic>>? ??
-                  []));
-          appointments.add(appointmentData);
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) =>
-                  ServicesScreen(authService: widget.authService),
-              settings: RouteSettings(arguments: appointments),
-            ),
-          );
-        } else {
-          if (!mounted) return;
-
-          final appointments = List<Map<String, dynamic>>.from(
-              (ModalRoute.of(context)?.settings.arguments
-                      as List<Map<String, dynamic>>? ??
-                  []));
-          appointments.add(appointmentData);
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PaymentScreen(
-                appointments: appointments,
+        if (shouldContinue == true) {
+          // Navegar para a tela de pagamento
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PaymentScreen(
+                  amount: 100.0, // Valor do serviço
+                  serviceTitle: widget.serviceTitle,
+                  serviceDescription: 'Agendamento de ${widget.serviceTitle}',
+                  carId: _selectedCar!['id'],
+                  carModel: _selectedCar!['model'],
+                  carPlate: _selectedCar!['plate'],
+                ),
               ),
-            ),
-          );
+            );
+          }
         }
       }
     } catch (e) {
@@ -475,7 +416,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-
                     Text(
                       'Selecione o Carro',
                       style: GoogleFonts.poppins(
@@ -619,8 +559,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                         ],
                       ),
                     const SizedBox(height: 24),
-
-                    // Date Selection
                     Text(
                       'Data',
                       style: GoogleFonts.poppins(
@@ -653,7 +591,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-
                     Text(
                       'Horário',
                       style: GoogleFonts.poppins(
@@ -764,7 +701,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: const Color.fromRGBO(0, 0, 0, 0).withValues(),
               blurRadius: 10,
               offset: const Offset(0, -5),
             ),

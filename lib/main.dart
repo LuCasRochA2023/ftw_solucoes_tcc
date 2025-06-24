@@ -8,7 +8,7 @@ import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/auth_service.dart';
 
 Future<void> initializeFirebase() async {
@@ -41,8 +41,8 @@ Future<void> initializeFirebase() async {
 }
 
 void main() async {
+  await dotenv.load(fileName: '.env');
   WidgetsFlutterBinding.ensureInitialized();
-
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

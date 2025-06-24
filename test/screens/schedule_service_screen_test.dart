@@ -1,34 +1,22 @@
+import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ftw_solucoes/screens/schedule_service_screen.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:mockito/annotations.dart';
 import 'package:mockito/mockito.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class MockAuthService extends Mock implements AuthService {}
-
-class MockUser extends Mock implements User {}
-
-class MockFirestore extends Mock implements FirebaseFirestore {}
-
-class MockCollectionReference extends Mock implements CollectionReference {}
-
-class MockQuerySnapshot extends Mock implements QuerySnapshot {}
-
+@GenerateNiceMocks([
+  MockSpec<FirebaseFirestore>(),
+  MockSpec<QuerySnapshot>(),
+  MockSpec<CollectionReference>(),
+  MockSpec<QueryDocumentSnapshot>()
+])
 void main() {
-  late MockAuthService mockAuthService;
-  late MockUser mockUser;
-  late MockFirestore mockFirestore;
-
   setUp(() {
-    mockAuthService = MockAuthService();
-    mockUser = MockUser();
-    mockFirestore = MockFirestore();
-
-    when(mockAuthService.currentUser).thenReturn(mockUser);
-    when(mockUser.uid).thenReturn('test-uid');
-    when(mockUser.email).thenReturn('test@example.com');
+    test('O método deve retornar uma lista de agendamentos realizados', () {});
   });
 
   testWidgets('ScheduleServiceScreen deve mostrar título do serviço',

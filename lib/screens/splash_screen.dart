@@ -70,6 +70,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: Colors.white,
       body: Stack(
         children: [
+          // Gradiente de fundo
           Center(
             child: Container(
               width: 300,
@@ -87,6 +88,7 @@ class _SplashScreenState extends State<SplashScreen>
               ),
             ),
           ),
+          // Conteúdo animado
           Center(
             child: AnimatedBuilder(
               animation: _controller,

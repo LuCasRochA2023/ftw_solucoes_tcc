@@ -60,7 +60,7 @@ void main() {
   testWidgets('HomeScreen deve mostrar botão de logout no drawer',
       (WidgetTester tester) async {
     // Arrange
-    when(mockAuthService.signOut()).thenAnswer((_) async => null);
+    when(mockAuthService.signOut()).thenAnswer((_) async {});
 
     await tester.pumpWidget(
       MaterialApp(

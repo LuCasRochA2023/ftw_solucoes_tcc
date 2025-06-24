@@ -9,8 +9,6 @@ class MockUser extends Mock implements User {}
 
 class MockFirestore extends Mock implements FirebaseFirestore {}
 
-class MockCollectionReference extends Mock implements CollectionReference {}
-
 void main() {
   late List<Map<String, dynamic>> mockAppointments;
 
@@ -31,21 +29,18 @@ void main() {
 
   testWidgets('PaymentScreen deve mostrar resumo dos serviços',
       (WidgetTester tester) async {
-    // Arrange
     await tester.pumpWidget(
       MaterialApp(
         home: PaymentScreen(appointments: mockAppointments),
       ),
     );
 
-    // Act
     await tester.pump();
 
-    // Assert
     expect(find.text('Resumo dos Serviços'), findsOneWidget);
     expect(find.text('Lavagem'), findsOneWidget);
     expect(find.text('Polimento'), findsOneWidget);
-    expect(find.text('R\$ 200,00'), findsOneWidget); // Total para 2 serviços
+    expect(find.text('R\$ 200,00'), findsOneWidget);
   });
 
   testWidgets('PaymentScreen deve mostrar opções de pagamento',

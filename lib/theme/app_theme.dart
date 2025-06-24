@@ -5,11 +5,10 @@ class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.light(
+      colorScheme: const ColorScheme.light(
         primary: Colors.blue,
         secondary: Colors.blueAccent,
         surface: Colors.white,
-        background: Colors.white,
         error: Colors.red,
       ),
       scaffoldBackgroundColor: Colors.white,
