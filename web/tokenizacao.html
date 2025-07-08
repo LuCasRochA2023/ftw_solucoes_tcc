@@ -31,18 +31,74 @@
       transform: translate(-50%, -50%);
       text-align: center;
     }
+    #payment-info {
+      background: white;
+      padding: 20px;
+      margin: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      width: calc(100% - 40px);
+      max-width: 400px;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .info-row:last-child {
+      border-bottom: none;
+      font-weight: bold;
+      font-size: 18px;
+      color: #2c3e50;
+    }
+    .label {
+      color: #666;
+    }
+    .value {
+      color: #2c3e50;
+    }
   </style>
 </head>
 <body>
   <div id="loading">Carregando...</div>
+  
+  <!-- Informações do pagamento -->
+  <div id="payment-info" style="display: none;">
+    <div class="info-row">
+      <span class="label">Email:</span>
+      <span class="value" id="payer-email">-</span>
+    </div>
+    <div class="info-row">
+      <span class="label">CPF:</span>
+      <span class="value" id="payer-cpf">-</span>
+    </div>
+    <div class="info-row">
+      <span class="label">Valor Total:</span>
+      <span class="value" id="total-amount">-</span>
+    </div>
+  </div>
+  
   <div id="cardPaymentBrick_container"></div>
+  
   <script>
     console.log('Página iniciando...');
 
     // Função para receber dados do Flutter
-    window.receiveData = function(data) {
+    window.receiveUserData = function(data) {
       console.log('Dados recebidos:', data);
       document.getElementById('loading').style.display = 'none';
+      
+      // Mostrar informações do pagamento
+      const paymentInfo = document.getElementById('payment-info');
+      paymentInfo.style.display = 'block';
+      
+      // Preencher informações
+      document.getElementById('payer-email').textContent = data.payer.email || '-';
+      document.getElementById('payer-cpf').textContent = data.payer.identification.number || '-';
+      document.getElementById('total-amount').textContent = `R$ ${parseFloat(data.amount).toFixed(2).replace('.', ',')}`;
+      
       initializeBrick(data);
     };
 
@@ -56,9 +112,17 @@
           initialization: {
             amount: parseFloat(data.amount),
             payer: {
+              email: data.payer.email,
               identification: {
                 type: 'CPF',
-                number: data.cpf
+                number: data.payer.identification.number
+              }
+            }
+          },
+          customization: {
+            visual: {
+              style: {
+                theme: 'default'
               }
             }
           },
@@ -70,18 +134,16 @@
             onSubmit: async ({paymentMethodId, issuerId, cardholderEmail, token}) => {
               console.log('Token gerado:', token);
               // Enviar token para o Flutter
-              window.Flutter.postMessage(JSON.stringify({
-                type: 'token',
-                token: token
-              }));
+              window.flutter_inappwebview.callHandler('onSuccess', {
+                token: token,
+                paymentMethodId: paymentMethodId,
+                issuerId: issuerId
+              });
             },
             onError: (error) => {
               console.error('Erro no Brick:', error);
               // Enviar erro para o Flutter
-              window.Flutter.postMessage(JSON.stringify({
-                type: 'error',
-                message: error.message
-              }));
+              window.flutter_inappwebview.callHandler('onError', error.message);
             }
           }
         };
@@ -90,40 +152,16 @@
         mp.bricks().create('cardPayment', 'cardPaymentBrick_container', settings);
       } catch (error) {
         console.error('Erro ao inicializar Brick:', error);
-        window.Flutter.postMessage(JSON.stringify({
-          type: 'error',
-          message: 'Erro ao inicializar Brick: ' + error.message
-        }));
+        window.flutter_inappwebview.callHandler('onError', 'Erro ao inicializar Brick: ' + error.message);
       }
     }
-
-    // Expor função para receber dados
-    window.addEventListener('message', function(event) {
-      console.log('Mensagem recebida:', event.data);
-      if (event.data) {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('Dados parseados:', data);
-          if (data.amount && data.cpf) {
-            window.receiveData(data);
-          } else {
-            console.error('Dados incompletos:', data);
-          }
-        } catch (e) {
-          console.error('Erro ao processar dados:', e);
-        }
-      }
-    });
 
     // Verificar se o SDK foi carregado
     window.addEventListener('load', function() {
       console.log('Página carregada');
       if (typeof MercadoPago === 'undefined') {
         console.error('SDK do Mercado Pago não carregado!');
-        window.Flutter.postMessage(JSON.stringify({
-          type: 'error',
-          message: 'SDK do Mercado Pago não carregado'
-        }));
+        window.flutter_inappwebview.callHandler('onError', 'SDK do Mercado Pago não carregado');
       } else {
         console.log('SDK do Mercado Pago carregado com sucesso');
       }

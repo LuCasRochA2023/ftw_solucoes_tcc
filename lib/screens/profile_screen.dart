@@ -26,8 +26,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final ImagePicker _picker = ImagePicker();
-  File? _imageFile;
   bool _isLoading = false;
   bool _isLoggingOut = false;
   String? _currentPhotoUrl;
@@ -46,11 +44,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _storage = FirebaseStorage.instance;
   Map<String, dynamic>? _userData;
   StreamSubscription<User?>? _authStateSubscription;
-  bool _isEditing = false;
   bool _isImageLoading = false;
   String? _cepError;
-  bool _streetEnabled = false;
-  bool _neighborhoodEnabled = false;
+  final _cepFocusNode = FocusNode();
 
   final _cpfFormatter = MaskTextInputFormatter(
     mask: '###.###.###-##',
@@ -72,6 +68,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadUserData();
     _loadCurrentPhoto();
+    _cepFocusNode.addListener(_onCepFocusChanged);
     _authStateSubscription =
         FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (!mounted) return;
@@ -299,8 +296,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _isLoading = true;
       _cepError = null;
-      _streetEnabled = false;
-      _neighborhoodEnabled = false;
     });
 
     try {
@@ -322,12 +317,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _neighborhoodController.text = data['bairro'] ?? '';
           _cityController.text = data['localidade'] ?? '';
           _stateController.text = data['uf'] ?? '';
-
-          // Se não tiver rua ou bairro, habilita a edição
-          _streetEnabled =
-              data['logradouro'] == null || data['logradouro'].isEmpty;
-          _neighborhoodEnabled =
-              data['bairro'] == null || data['bairro'].isEmpty;
         });
       } else {
         setState(() {
@@ -345,6 +334,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _onCepChanged(String value) {
+    // Limpar erro anterior
+    setState(() {
+      _cepError = null;
+    });
+  }
+
+  void _onCepEditingComplete() {
+    final cep = _cepController.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (cep.length == 8) {
+      _searchCep();
+    }
+  }
+
+  void _onCepFocusChanged() {
+    if (!_cepFocusNode.hasFocus) {
+      // Quando o campo perde o foco, verificar se o CEP é válido e buscar
+      final cep = _cepController.text.replaceAll(RegExp(r'[^\d]'), '');
+      if (cep.length == 8) {
+        _searchCep();
+      }
+    }
+  }
+
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -359,6 +372,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'cep': _cepController.text,
         'street': _streetController.text,
         'number': _numberController.text,
+        'complement': _complementController.text,
         'neighborhood': _neighborhoodController.text,
         'city': _cityController.text,
         'state': _stateController.text,
@@ -385,7 +399,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await user.updateDisplayName(_nameController.text);
 
       setState(() {
-        _isEditing = false;
         _showSuccessMessage('Perfil atualizado com sucesso!');
       });
     } catch (e) {
@@ -518,6 +531,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _authStateSubscription?.cancel();
+    _cepFocusNode.dispose();
     _nameController.dispose();
     _cpfController.dispose();
     _phoneController.dispose();
@@ -648,22 +662,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             labelText: 'CEP',
             hintText: '00000-000',
             errorText: _cepError,
-            suffixIcon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.search),
-                    onPressed: _searchCep,
-                  ),
           ),
           keyboardType: TextInputType.number,
           inputFormatters: [
             FilteringTextInputFormatter.digitsOnly,
             _cepFormatter,
           ],
+          onChanged: _onCepChanged,
+          onEditingComplete: _onCepEditingComplete,
+          focusNode: _cepFocusNode,
           validator: (value) {
             if (value == null || value.isEmpty) {
               return 'Por favor, informe o CEP';
@@ -711,20 +718,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               flex: 3,
               child: TextFormField(
-                controller: _neighborhoodController,
+                controller: _complementController,
                 decoration: const InputDecoration(
-                  labelText: 'Bairro',
+                  labelText: 'Complemento',
+                  hintText: 'Apto, Casa, etc.',
                   border: OutlineInputBorder(),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Por favor, informe o bairro';
-                  }
-                  return null;
-                },
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _neighborhoodController,
+          decoration: const InputDecoration(
+            labelText: 'Bairro',
+            border: OutlineInputBorder(),
+          ),
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Por favor, informe o bairro';
+            }
+            return null;
+          },
         ),
         const SizedBox(height: 16),
         Row(

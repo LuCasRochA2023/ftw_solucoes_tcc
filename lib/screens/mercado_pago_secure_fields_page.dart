@@ -23,23 +23,19 @@ class _MercadoPagoSecureFieldsPageState
   final Completer<String> _tokenCompleter = Completer<String>();
   String? _errorMessage;
   bool _isLoading = true;
-  InAppWebViewController? _webViewController;
+  int _injectionAttempts = 0;
+  static const int _maxInjectionAttempts = 5;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pagamento Seguro'),
-      ),
+      appBar: AppBar(title: const Text('Pagamento Seguro')),
       body: Stack(
         children: [
           InAppWebView(
             initialUrlRequest: URLRequest(
-              url: WebUri('https://ftw-back-end-5.onrender.com'),
-              headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-              },
+              url: WebUri('http://10.0.2.2:8080'),
+              headers: {'Cache-Control': 'no-cache', 'Pragma': 'no-cache'},
             ),
             onLoadStart: (controller, url) {
               debugPrint('Página iniciando carregamento: $url');
@@ -48,7 +44,6 @@ class _MercadoPagoSecureFieldsPageState
             onLoadStop: (controller, url) {
               debugPrint('Página carregada: $url');
               setState(() => _isLoading = false);
-              _webViewController = controller;
               _injectUserData(controller);
             },
             onLoadError: (controller, url, code, message) {
@@ -63,7 +58,6 @@ class _MercadoPagoSecureFieldsPageState
             },
             onWebViewCreated: (controller) {
               debugPrint('WebView criada');
-              _webViewController = controller;
 
               controller.addJavaScriptHandler(
                 handlerName: 'onSuccess',
@@ -94,10 +88,7 @@ class _MercadoPagoSecureFieldsPageState
               );
             },
           ),
-          if (_isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
+          if (_isLoading) const Center(child: CircularProgressIndicator()),
           if (_errorMessage != null)
             Center(
               child: Container(
@@ -119,36 +110,106 @@ class _MercadoPagoSecureFieldsPageState
   }
 
   void _injectUserData(InAppWebViewController controller) {
-    debugPrint('Iniciando injeção de dados do usuário');
+    debugPrint(
+        'Iniciando injeção de dados do usuário (tentativa ${_injectionAttempts + 1})');
 
-    Future.delayed(const Duration(seconds: 2), () {
+    // Verifica se excedeu o número máximo de tentativas
+    if (_injectionAttempts >= _maxInjectionAttempts) {
+      debugPrint('Número máximo de tentativas excedido');
+      if (!_tokenCompleter.isCompleted) {
+        _tokenCompleter.completeError(
+            'SDK do Mercado Pago não carregou após várias tentativas');
+      }
+      return;
+    }
+
+    _injectionAttempts++;
+
+    // Aguarda mais tempo para o SDK carregar completamente
+    Future.delayed(const Duration(seconds: 3), () async {
       if (!mounted) return;
 
       final userData = jsonDecode(_prepareUserData());
       debugPrint('Dados preparados para envio: $userData');
 
-      controller.evaluateJavascript(source: '''
-      try {
-        if (typeof receiveUserData === 'function') {
-          receiveUserData(${jsonEncode(userData)});
-        } else {
-          window.flutter_inappwebview.callHandler('onError', 'SDK do Mercado Pago não carregado');
-        }
-      } catch (e) {
-        window.flutter_inappwebview.callHandler('onError', 'Erro ao enviar dados: ' + e.message);
+      // Primeiro, verifica se o SDK está carregado
+      final sdkCheckResult = await controller.evaluateJavascript(
+        source: '''
+        (function() {
+          try {
+            if (typeof MercadoPago !== 'undefined' && typeof receiveUserData === 'function') {
+              return 'ready';
+            } else if (typeof MercadoPago !== 'undefined') {
+              return 'sdk_loaded';
+            } else {
+              return 'not_ready';
+            }
+          } catch (e) {
+            return 'error: ' + e.message;
+          }
+        })();
+      ''',
+      );
+
+      debugPrint('Status do SDK: $sdkCheckResult');
+
+             if (sdkCheckResult == 'ready') {
+         // SDK está pronto, injeta os dados
+         controller.evaluateJavascript(
+           source: '''
+         try {
+           if (typeof receiveUserData === 'function') {
+             receiveUserData(${jsonEncode(userData)});
+             console.log('Dados enviados para receiveUserData:', ${jsonEncode(userData)});
+           } else {
+             console.error('Função receiveUserData não encontrada');
+             window.flutter_inappwebview.callHandler('onError', 'Função receiveUserData não encontrada');
+           }
+         } catch (e) {
+           console.error('Erro ao enviar dados:', e.message);
+           window.flutter_inappwebview.callHandler('onError', 'Erro ao enviar dados: ' + e.message);
+         }
+       ''',
+         );
+      } else if (sdkCheckResult == 'sdk_loaded') {
+        // SDK carregado mas função não disponível, tenta novamente
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          _injectUserData(controller);
+        });
+      } else {
+        // SDK não carregado, tenta novamente
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!mounted) return;
+          _injectUserData(controller);
+        });
       }
-    ''');
     });
   }
 
   String _prepareUserData() {
+    // Garante que o CPF está limpo (apenas números)
+    final cpf =
+        widget.userData['cpf']?.toString().replaceAll(RegExp(r'[^\d]'), '') ??
+            '';
+
+    // Garante que o email está disponível
+    final email = widget.userData['email']?.toString() ?? '';
+
+    // Log dos dados para debug
+    debugPrint('Preparando dados do usuário:');
+    debugPrint('Email: $email');
+    debugPrint('CPF: $cpf');
+    debugPrint('Valor: ${widget.amount}');
+
     final data = {
       'amount': widget.amount,
+      'description': 'Pagamento FTW Soluções',
       'payer': {
-        'email': widget.userData['email'],
+        'email': email,
         'identification': {
           'type': 'CPF',
-          'number': widget.userData['cpf']?.replaceAll(RegExp(r'[^\d]'), ''),
+          'number': cpf,
         },
         'entityType': 'individual',
       },

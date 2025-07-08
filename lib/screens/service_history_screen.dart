@@ -16,7 +16,6 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
   final _auth = FirebaseAuth.instance;
   bool _isLoading = true;
   List<Map<String, dynamic>> _appointments = [];
-  final _dateFormat = DateFormat('dd/MM/yyyy HH:mm', 'pt_BR');
   String? _error;
 
   @override

@@ -4,12 +4,13 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:http/http.dart' as http;
 import 'package:ftw_solucoes/screens/mercado_pago_secure_fields_page.dart';
 import 'package:ftw_solucoes/screens/success_screen.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
 import '../services/auth_service.dart';
+import '../services/payment_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -76,7 +77,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (cpf == null || phone == null || address == null) {
         throw Exception(
-            'Por favor, complete seu cadastro no perfil antes de fazer o pagamento');
+          'Por favor, complete seu cadastro no perfil antes de fazer o pagamento',
+        );
       }
 
       final phoneParts = phone.replaceAll(RegExp(r'[^\d]'), '').split('');
@@ -87,6 +89,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       final idempotencyKey = const Uuid().v4();
       debugPrint('Chave de idempotência gerada: $idempotencyKey');
+
+      // Log dos dados que serão passados para a página de pagamento
+      debugPrint('Dados do usuário para pagamento:');
+      debugPrint('Email: ${user.email}');
+      debugPrint('CPF: $cpf');
+      debugPrint('Valor do serviço: ${widget.amount}');
+      debugPrint('Nome: ${user.displayName}');
 
       final tokenResult = await Navigator.push<Map<String, dynamic>>(
         context,
@@ -141,52 +150,34 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'city': address['city'] ?? '',
             'federal_unit': address['state'] ?? '',
           },
-          'phone': {
-            'area_code': areaCode,
-            'number': phoneNumber,
-          },
+          'phone': {'area_code': areaCode, 'number': phoneNumber},
         },
-        'metadata': {
-          'user_id': user.uid,
-          'order_id': idempotencyKey,
-        },
+        'metadata': {'user_id': user.uid, 'order_id': idempotencyKey},
       };
 
       debugPrint('Enviando dados do pagamento para a API...');
       debugPrint('Dados do pagamento: ${jsonEncode(paymentData)}');
 
-      final response = await http.post(
-        Uri.parse('https://ftw-back-end-5.onrender.com/payment/v2'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Idempotency-Key': idempotencyKey,
-        },
-        body: jsonEncode(paymentData),
+      // Usar o novo serviço de pagamento
+      final responseData = await PaymentService.processCreditCardPayment(
+        amount: widget.amount,
+        token: token,
+        description: 'Pagamento FTW Soluções',
+        payer: paymentData['payer'],
+        installments: 1,
+        paymentMethodId: 'master',
       );
 
-      debugPrint('Resposta da API: ${response.statusCode}');
-      debugPrint('Corpo da resposta: ${response.body}');
+      if (!mounted) return;
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final responseData = jsonDecode(response.body);
-        if (!mounted) return;
-
-        debugPrint(
-            'Pagamento processado com sucesso. ID: ${responseData['id']}');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SuccessScreen(
-              paymentId: responseData['id'].toString(),
-            ),
-          ),
-        );
-      } else {
-        final errorData = jsonDecode(response.body);
-        debugPrint('Erro na resposta da API: ${errorData['message']}');
-        throw Exception(errorData['message'] ?? 'Erro ao processar pagamento');
-      }
+      debugPrint('Pagamento processado com sucesso. ID: ${responseData['id']}');
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              SuccessScreen(paymentId: responseData['id'].toString()),
+        ),
+      );
     } catch (e) {
       debugPrint('Erro ao processar pagamento: $e');
       if (!mounted) return;
@@ -230,7 +221,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (cpf == null || phone == null || address == null) {
         throw Exception(
-            'Por favor, complete seu cadastro no perfil antes de fazer o pagamento');
+          'Por favor, complete seu cadastro no perfil antes de fazer o pagamento',
+        );
       }
 
       final idempotencyKey = const Uuid().v4();
@@ -248,10 +240,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'number': cpf.replaceAll(RegExp(r'[^\d]'), ''),
           },
         },
-        'metadata': {
-          'user_id': user.uid,
-          'order_id': idempotencyKey,
-        },
+        'metadata': {'user_id': user.uid, 'order_id': idempotencyKey},
       };
 
       final response = await http.post(
@@ -291,9 +280,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (context) => ProfileScreen(
-          authService: AuthService(),
-        ),
+        builder: (context) => ProfileScreen(authService: AuthService()),
       ),
     );
   }
@@ -301,9 +288,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Pagamento'),
-      ),
+      appBar: AppBar(title: const Text('Pagamento')),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -347,7 +332,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   Expanded(
                     child: InkWell(
                       onTap: () => setState(
-                          () => _selectedPaymentMethod = 'credit_card'),
+                        () => _selectedPaymentMethod = 'credit_card',
+                      ),
                       child: Card(
                         elevation:
                             _selectedPaymentMethod == 'credit_card' ? 4 : 1,
@@ -368,9 +354,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               const SizedBox(height: 8),
                               const Text(
                                 'Cartão de Crédito',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w500),
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -403,9 +387,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               const SizedBox(height: 8),
                               const Text(
                                 'PIX',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                style: TextStyle(fontWeight: FontWeight.w500),
                                 textAlign: TextAlign.center,
                               ),
                             ],
@@ -433,8 +415,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : const Text(
@@ -469,7 +452,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white),
+                                      Colors.white,
+                                    ),
                                   ),
                                 )
                               : const Text(
@@ -529,9 +513,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600),
               textAlign: TextAlign.end,
             ),
           ),

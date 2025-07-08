@@ -39,6 +39,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
+  // Mapa de preços dos serviços
+  static const Map<String, double> _servicePrices = {
+    'Lavagem': 50.0,
+    'Espelhamento': 120.0,
+    'Polimento': 150.0,
+    'Higienização': 100.0,
+    'Hidratação de Couro': 180.0,
+    'Leva e Traz': 30.0,
+  };
+
   @override
   void initState() {
     super.initState();
@@ -151,6 +161,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         );
       }
     }
+  }
+
+  // Função para obter o valor do serviço
+  double _getServicePrice() {
+    return _servicePrices[widget.serviceTitle] ?? 100.0;
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -313,13 +328,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         );
 
         if (shouldContinue == true) {
+          // Obter o valor do serviço do mapa de preços
+          final serviceAmount = _servicePrices[widget.serviceTitle] ?? 100.0;
+
+          debugPrint('Serviço: ${widget.serviceTitle}');
+          debugPrint('Valor: R\$ ${serviceAmount.toStringAsFixed(2)}');
+
           // Navegar para a tela de pagamento
           if (mounted) {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => PaymentScreen(
-                  amount: 100.0, // Valor do serviço
+                  amount: serviceAmount, // Valor dinâmico do serviço
                   serviceTitle: widget.serviceTitle,
                   serviceDescription: 'Agendamento de ${widget.serviceTitle}',
                   carId: _selectedCar!['id'],
@@ -406,6 +427,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     'Selecione a data e horário desejados',
                                     style: GoogleFonts.poppins(
                                       color: Colors.black54,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Valor: R\$ ${_getServicePrice().toStringAsFixed(2)}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: widget.serviceColor,
                                     ),
                                   ),
                                 ],
