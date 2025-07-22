@@ -1,11 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
+import 'package:ftw_solucoes/utils/backend_url.dart';
 
 class PaymentService {
-  static const String _baseUrl =
-      'http://10.0.2.2:8080'; // Para desenvolvimento local (emulador Android)
-  // static const String _baseUrl = 'https://seu-backend-producao.com'; // Para produção
+  static final backendUrl = getBackendUrl();
 
   /// Processa um pagamento via cartão de crédito
   static Future<Map<String, dynamic>> processCreditCardPayment({
@@ -29,7 +28,7 @@ class PaymentService {
       };
 
       final response = await http.post(
-        Uri.parse('$_baseUrl/payment/v2'),
+        Uri.parse('$backendUrl/payment/v2'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -55,7 +54,7 @@ class PaymentService {
   static Future<String> getPublicKey() async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/public-key'),
+        Uri.parse('$backendUrl/api/public-key'),
         headers: {'Accept': 'application/json'},
       );
 
@@ -74,7 +73,7 @@ class PaymentService {
   static Future<bool> isBackendAvailable() async {
     try {
       final response = await http.get(
-        Uri.parse('$_baseUrl/api/public-key'),
+        Uri.parse('$backendUrl/api/public-key'),
         headers: {'Accept': 'application/json'},
       );
       return response.statusCode == 200;
