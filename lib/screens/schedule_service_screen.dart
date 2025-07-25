@@ -9,16 +9,12 @@ import 'payment_screen.dart';
 import 'cars_screen.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
-  final String serviceTitle;
-  final Color serviceColor;
-  final IconData serviceIcon;
+  final List<Map<String, dynamic>> services;
   final AuthService authService;
 
   const ScheduleServiceScreen({
     super.key,
-    required this.serviceTitle,
-    required this.serviceColor,
-    required this.serviceIcon,
+    required this.services,
     required this.authService,
   });
 
@@ -49,13 +45,47 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     'Leva e Traz': 30.0,
   };
 
+  int _totalDurationMinutes = 0;
+  String _serviceTitles = '';
+  Color _mainColor = Colors.blue;
+  IconData _mainIcon = Icons.build;
+
+  _ScheduleServiceScreenState()
+      : _totalDurationMinutes = 0,
+        _serviceTitles = '',
+        _mainColor = Colors.blue,
+        _mainIcon = Icons.build;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Não reatribuir as variáveis aqui
+  }
+
   @override
   void initState() {
     super.initState();
+    _totalDurationMinutes = _calculateTotalDuration(widget.services);
+    _serviceTitles = widget.services.map((s) => s['title']).join(', ');
+    _mainColor = widget.services.first['color'] ?? Colors.blue;
+    _mainIcon = widget.services.first['icon'] ?? Icons.build;
     _initializeDateFormatting();
     _generateTimeSlots();
     _loadBookedTimeSlots();
     _loadUserCars();
+  }
+
+  int _calculateTotalDuration(List<Map<String, dynamic>> services) {
+    int total = 0;
+    for (final s in services) {
+      final title = (s['title'] as String).toLowerCase();
+      if (title.contains('lavagem')) {
+        total += 60;
+      } else {
+        total += 120;
+      }
+    }
+    return total;
   }
 
   Future<void> _initializeDateFormatting() async {
@@ -67,12 +97,29 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _timeSlots.clear();
     final startTime = DateTime(2024, 1, 1, 8, 0);
     final endTime = DateTime(2024, 1, 1, 17, 0);
+    final step = const Duration(minutes: 30);
+    final block = Duration(minutes: _totalDurationMinutes);
 
     DateTime currentSlot = startTime;
-    while (currentSlot.isBefore(endTime) || currentSlot.hour == endTime.hour) {
+    while (currentSlot.add(block).isBefore(endTime.add(step)) ||
+        currentSlot.add(block).isAtSameMomentAs(endTime)) {
       _timeSlots.add(DateFormat('HH:mm').format(currentSlot));
-      currentSlot = currentSlot.add(const Duration(minutes: 30));
+      currentSlot = currentSlot.add(step);
     }
+  }
+
+  // Função para verificar se o bloco está livre
+  bool _isBlockAvailable(DateTime start, Map<String, String> bookedSlots) {
+    final block = Duration(minutes: _totalDurationMinutes);
+    DateTime check = start;
+    while (check.isBefore(start.add(block))) {
+      final slotStr = DateFormat('HH:mm').format(check);
+      if (bookedSlots.containsKey(slotStr)) {
+        return false;
+      }
+      check = check.add(const Duration(minutes: 30));
+    }
+    return true;
   }
 
   Future<void> _loadBookedTimeSlots() async {
@@ -108,7 +155,20 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         final data = doc.data();
         if (data['status'] == 'scheduled') {
           final dateTime = (data['dateTime'] as Timestamp).toDate();
-          final service = data['service'] as String;
+          dynamic serviceField = data['service'];
+          String service;
+          if (serviceField == null) {
+            service = 'Serviço';
+          } else if (serviceField is List) {
+            // Novo formato: lista de serviços
+            service = serviceField.isNotEmpty &&
+                    serviceField[0] is Map &&
+                    serviceField[0]['title'] != null
+                ? serviceField[0]['title'] as String
+                : 'Serviço';
+          } else {
+            service = serviceField as String;
+          }
           final timeSlot = DateFormat('HH:mm').format(dateTime);
           bookedSlots[timeSlot] = service;
           debugPrint('Booked slot: $timeSlot for service: $service');
@@ -163,11 +223,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     }
   }
 
-  // Função para obter o valor do serviço
-  double _getServicePrice() {
-    return _servicePrices[widget.serviceTitle] ?? 100.0;
-  }
-
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -179,11 +234,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.light(
-              primary: widget.serviceColor,
+              primary: _mainColor,
             ),
           ),
           child: child!,
         );
+      },
+      selectableDayPredicate: (date) {
+        // Retorna false para domingos (weekday == 7)
+        return date.weekday != DateTime.sunday;
       },
     );
     if (picked != null && picked != _selectedDate) {
@@ -231,126 +290,66 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[1]),
       );
 
-      debugPrint('Checking if time slot is available: ${dateTime.toString()}');
+      // Montar lista de serviços com título, tipo e duração
+      final List<Map<String, dynamic>> servicesToSave =
+          widget.services.map((s) {
+        final title = (s['title'] as String);
+        final isLavagem = title.toLowerCase().contains('lavagem');
+        return {
+          'title': title,
+          'type': isLavagem ? 'lavagem' : 'outro',
+          'duration': isLavagem ? 60 : 120, // minutos
+        };
+      }).toList();
 
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('appointments')
-          .where('dateTime', isEqualTo: dateTime)
-          .where('status', isEqualTo: 'scheduled')
-          .get();
+      // Salvar agendamento único e obter o id
+      final docRef =
+          await FirebaseFirestore.instance.collection('appointments').add({
+        'userId': user.uid,
+        'car': _selectedCar,
+        'services': servicesToSave,
+        'dateTime': dateTime,
+        'duration': _totalDurationMinutes,
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
 
-      if (querySnapshot.docs.isNotEmpty) {
-        if (mounted) {
-          final existingService =
-              querySnapshot.docs.first.data()['service'] as String;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Este horário já está reservado para $existingService. Por favor, escolha outro horário.',
-              ),
-              backgroundColor: Colors.orange,
-            ),
-          );
-
-          await _loadBookedTimeSlots();
-          setState(() => _isLoading = false);
+      // Calcular valor total dos serviços
+      double totalAmount = 0;
+      for (final s in widget.services) {
+        final title = (s['title'] as String).toLowerCase();
+        if (title.contains('lavagem')) {
+          totalAmount += 50.0;
+        } else if (title == 'leva e traz') {
+          totalAmount += 30.0;
+        } else if (title == 'espelhamento') {
+          totalAmount += 120.0;
+        } else if (title == 'polimento') {
+          totalAmount += 150.0;
+        } else if (title == 'higienização') {
+          totalAmount += 100.0;
+        } else if (title == 'hidratação de couro') {
+          totalAmount += 180.0;
+        } else {
+          totalAmount += 100.0;
         }
-        return;
       }
 
       if (mounted) {
-        final bool? shouldContinue = await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text(
-                'Confirmar Agendamento',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Serviço: ${widget.serviceTitle}',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Data: ${_dateFormat.format(_selectedDate)}',
-                    style: GoogleFonts.poppins(),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Horário: $_selectedTime',
-                    style: GoogleFonts.poppins(),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Carro: ${_selectedCar!['name']} ${_selectedCar!['model']}',
-                    style: GoogleFonts.poppins(),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Placa: ${_selectedCar!['plate']}',
-                    style: GoogleFonts.poppins(),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(
-                    'Cancelar',
-                    style: GoogleFonts.poppins(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: Text(
-                    'Confirmar',
-                    style: GoogleFonts.poppins(
-                      color: widget.serviceColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PaymentScreen(
+              amount: totalAmount,
+              serviceTitle: _serviceTitles,
+              serviceDescription: 'Agendamento de $_serviceTitles',
+              carId: _selectedCar!['id'],
+              carModel: _selectedCar!['model'],
+              carPlate: _selectedCar!['plate'],
+              appointmentId: docRef.id,
+            ),
+          ),
         );
-
-        if (shouldContinue == true) {
-          // Obter o valor do serviço do mapa de preços
-          final serviceAmount = _servicePrices[widget.serviceTitle] ?? 100.0;
-
-          debugPrint('Serviço: ${widget.serviceTitle}');
-          debugPrint('Valor: R\$ ${serviceAmount.toStringAsFixed(2)}');
-
-          // Navegar para a tela de pagamento
-          if (mounted) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PaymentScreen(
-                  amount: serviceAmount, // Valor dinâmico do serviço
-                  serviceTitle: widget.serviceTitle,
-                  serviceDescription: 'Agendamento de ${widget.serviceTitle}',
-                  carId: _selectedCar!['id'],
-                  carModel: _selectedCar!['model'],
-                  carPlate: _selectedCar!['plate'],
-                ),
-              ),
-            );
-          }
-        }
       }
     } catch (e) {
       debugPrint('Error scheduling service: $e');
@@ -374,11 +373,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Agendar ${widget.serviceTitle}',
+          'Agendar Serviços',
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.bold,
           ),
         ),
+        backgroundColor: _mainColor,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -402,11 +402,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: widget.serviceColor,
+                                color: _mainColor,
                                 shape: BoxShape.circle,
                               ),
                               child: Icon(
-                                widget.serviceIcon,
+                                _mainIcon,
                                 color: Colors.white,
                                 size: 32,
                               ),
@@ -417,7 +417,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    widget.serviceTitle,
+                                    _serviceTitles,
                                     style: GoogleFonts.poppins(
                                       fontSize: 20,
                                       fontWeight: FontWeight.bold,
@@ -431,11 +431,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Valor: R\$ ${_getServicePrice().toStringAsFixed(2)}',
+                                    'Duração total: ${(_totalDurationMinutes / 60).floor()}h${_totalDurationMinutes % 60 != 0 ? ' ${_totalDurationMinutes % 60}min' : ''}',
                                     style: GoogleFonts.poppins(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: widget.serviceColor,
+                                      color: _mainColor,
                                     ),
                                   ),
                                 ],
@@ -487,7 +487,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                   }
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: widget.serviceColor,
+                                  backgroundColor: _mainColor,
                                   foregroundColor: Colors.white,
                                 ),
                                 child: Text(
@@ -530,7 +530,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                                   value! ? car : null;
                                             });
                                           },
-                                          activeColor: widget.serviceColor,
+                                          activeColor: _mainColor,
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -577,12 +577,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                             },
                             icon: Icon(
                               Icons.add,
-                              color: widget.serviceColor,
+                              color: _mainColor,
                             ),
                             label: Text(
                               'Adicionar outro carro',
                               style: GoogleFonts.poppins(
-                                color: widget.serviceColor,
+                                color: _mainColor,
                               ),
                             ),
                           ),
@@ -614,7 +614,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                             ),
                             Icon(
                               Icons.calendar_today,
-                              color: widget.serviceColor,
+                              color: _mainColor,
                             ),
                           ],
                         ),
@@ -643,34 +643,31 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       itemBuilder: (context, index) {
                         final timeSlot = _timeSlots[index];
                         final isSelected = timeSlot == _selectedTime;
-                        final isBooked = _bookedTimeSlots.containsKey(timeSlot);
-                        final bookedService = _bookedTimeSlots[timeSlot];
-
+                        final slotTime = DateTime(
+                          _selectedDate.year,
+                          _selectedDate.month,
+                          _selectedDate.day,
+                          int.parse(timeSlot.split(':')[0]),
+                          int.parse(timeSlot.split(':')[1]),
+                        );
+                        final isAvailable =
+                            _isBlockAvailable(slotTime, _bookedTimeSlots);
+                        if (!isAvailable) return const SizedBox.shrink();
                         return Tooltip(
-                          message: isBooked
-                              ? 'Reservado: $bookedService'
-                              : 'Disponível',
+                          message: 'Disponível',
                           child: InkWell(
-                            onTap: isBooked
-                                ? null
-                                : () {
-                                    setState(() {
-                                      _selectedTime = timeSlot;
-                                    });
-                                  },
+                            onTap: () {
+                              setState(() {
+                                _selectedTime = timeSlot;
+                              });
+                            },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: isBooked
-                                    ? Colors.grey.shade300
-                                    : isSelected
-                                        ? widget.serviceColor
-                                        : Colors.white,
+                                color: isSelected ? _mainColor : Colors.white,
                                 border: Border.all(
-                                  color: isBooked
-                                      ? Colors.grey.shade400
-                                      : isSelected
-                                          ? widget.serviceColor
-                                          : Colors.grey.shade300,
+                                  color: isSelected
+                                      ? _mainColor
+                                      : Colors.grey.shade300,
                                 ),
                                 borderRadius: BorderRadius.circular(8),
                               ),
@@ -678,17 +675,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 child: Text(
                                   timeSlot,
                                   style: GoogleFonts.poppins(
-                                    color: isBooked
-                                        ? Colors.grey.shade600
-                                        : isSelected
-                                            ? Colors.white
-                                            : Colors.black87,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
                                     fontWeight: isSelected
                                         ? FontWeight.bold
                                         : FontWeight.normal,
-                                    decoration: isBooked
-                                        ? TextDecoration.lineThrough
-                                        : null,
                                   ),
                                 ),
                               ),
@@ -697,30 +689,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                         );
                       },
                     ),
-                    if (_bookedTimeSlots.isNotEmpty) ...[
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              border: Border.all(color: Colors.grey.shade400),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Horários indisponíveis',
-                            style: GoogleFonts.poppins(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -740,7 +708,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         child: ElevatedButton(
           onPressed: _isLoading ? null : _scheduleService,
           style: ElevatedButton.styleFrom(
-            backgroundColor: widget.serviceColor,
+            backgroundColor: _mainColor,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 16),
             shape: RoundedRectangleBorder(

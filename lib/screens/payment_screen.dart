@@ -6,11 +6,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
-import 'package:ftw_solucoes/screens/mercado_pago_secure_fields_page.dart';
+// Remover import e uso de MercadoPagoSecureFieldsPage e widgets Bricks
+// Deixe apenas a lógica de exibir QR Code Pix e consultar status via backend
 import 'package:ftw_solucoes/screens/success_screen.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
 import '../services/auth_service.dart';
 import '../services/payment_service.dart';
+import 'package:flutter/services.dart';
+import 'package:ftw_solucoes/screens/home_screen.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -19,6 +23,7 @@ class PaymentScreen extends StatefulWidget {
   final String carId;
   final String carModel;
   final String carPlate;
+  final String appointmentId;
 
   const PaymentScreen({
     Key? key,
@@ -28,6 +33,7 @@ class PaymentScreen extends StatefulWidget {
     required this.carId,
     required this.carModel,
     required this.carPlate,
+    required this.appointmentId,
   }) : super(key: key);
 
   @override
@@ -37,160 +43,137 @@ class PaymentScreen extends StatefulWidget {
 class _PaymentScreenState extends State<PaymentScreen> {
   bool _isProcessing = false;
   String? _errorMessage;
-  String _selectedPaymentMethod = 'credit_card';
   String? _pixQrCode;
   String? _pixQrCodeImage;
+  String? _paymentId;
+  Timer? _statusTimer;
+  int _selectedTab = 0; // 0 = Pix, 1 = Cartão
 
-  Future<void> _processCreditCardPayment() async {
-    debugPrint('Iniciando processamento do pagamento...');
+  // Campos do formulário de cartão
+  final _cardNumberController = TextEditingController();
+  final _expiryController = TextEditingController();
+  final _cvvController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isCardProcessing = false;
+  String? _cardError;
+  String? _cardSuccess;
+  final _cpfController = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    _criarPagamentoPix();
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    _cardNumberController.dispose();
+    _expiryController.dispose();
+    _cvvController.dispose();
+    _nameController.dispose();
+    _cpfController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _criarPagamentoPix() async {
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
-
     try {
-      debugPrint('Obtendo usuário atual...');
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        throw Exception('Usuário não autenticado');
-      }
+      print('=== DEBUG: Iniciando requisição para criar pagamento PIX ===');
+      print('URL: http://10.0.2.2:3001/create-payment');
 
-      debugPrint('Obtendo dados do usuário do Firestore...');
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      if (!userDoc.exists) {
-        throw Exception('Dados do usuário não encontrados');
-      }
-
-      final userData = userDoc.data() as Map<String, dynamic>;
-      final cpf = userData['cpf'] as String?;
-      final phone = userData['phone'] as String?;
-      final address = userData['address'] as Map<String, dynamic>?;
-
-      debugPrint('CPF: $cpf');
-      debugPrint('Telefone: $phone');
-      debugPrint('Endereço: $address');
-
-      if (cpf == null || phone == null || address == null) {
-        throw Exception(
-          'Por favor, complete seu cadastro no perfil antes de fazer o pagamento',
-        );
-      }
-
-      final phoneParts = phone.replaceAll(RegExp(r'[^\d]'), '').split('');
-      final areaCode = phoneParts.take(2).join();
-      final phoneNumber = phoneParts.skip(2).join();
-
-      debugPrint('DDD: $areaCode, Número: $phoneNumber');
-
-      final idempotencyKey = const Uuid().v4();
-      debugPrint('Chave de idempotência gerada: $idempotencyKey');
-
-      // Log dos dados que serão passados para a página de pagamento
-      debugPrint('Dados do usuário para pagamento:');
-      debugPrint('Email: ${user.email}');
-      debugPrint('CPF: $cpf');
-      debugPrint('Valor do serviço: ${widget.amount}');
-      debugPrint('Nome: ${user.displayName}');
-
-      final tokenResult = await Navigator.push<Map<String, dynamic>>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => MercadoPagoSecureFieldsPage(
-            amount: widget.amount,
-            userData: {
-              'cpf': cpf,
-              'phone': phone,
-              'address': address,
-              'email': user.email,
-              'name': user.displayName,
-            },
-          ),
-        ),
-      );
-
-      debugPrint('Resultado da tokenização: $tokenResult');
-
-      if (tokenResult == null) {
-        throw Exception('Operação cancelada');
-      }
-
-      if (tokenResult.containsKey('error')) {
-        throw Exception(tokenResult['error']);
-      }
-
-      final token = tokenResult['token'];
-      debugPrint('Token obtido: $token');
-
-      final paymentData = {
-        'transaction_amount': widget.amount,
-        'token': token,
-        'description': 'Pagamento FTW Soluções',
-        'installments': 1,
-        'payment_method_id': 'master',
-        'payer': {
-          'email': user.email,
-          'identification': {
-            'type': 'CPF',
-            'number': cpf.replaceAll(RegExp(r'[^\d]'), ''),
-          },
-          'first_name': user.displayName?.split(' ').first ?? '',
-          'last_name': user.displayName?.split(' ').skip(1).join(' ') ?? '',
-          'address': {
-            'zip_code':
-                address['cep']?.toString().replaceAll(RegExp(r'[^\d]'), '') ??
-                    '',
-            'street_name': address['street'] ?? '',
-            'street_number': address['number']?.toString() ?? '',
-            'neighborhood': address['neighborhood'] ?? '',
-            'city': address['city'] ?? '',
-            'federal_unit': address['state'] ?? '',
-          },
-          'phone': {'area_code': areaCode, 'number': phoneNumber},
-        },
-        'metadata': {'user_id': user.uid, 'order_id': idempotencyKey},
+      final headers = {
+        'Content-Type': 'application/json',
+        'x-idempotency-key': const Uuid().v4(),
       };
+      print('Headers: ${jsonEncode(headers)}');
 
-      debugPrint('Enviando dados do pagamento para a API...');
-      debugPrint('Dados do pagamento: ${jsonEncode(paymentData)}');
+      final requestBody = {
+        'amount': widget.amount,
+        'description': widget.serviceDescription,
+        'payer': {
+          'email': 'usuario@email.com',
+          'firstName': 'Nome',
+          'lastName': 'Sobrenome',
+          'cpf': '12345678900',
+        }
+      };
+      print('Body: ${jsonEncode(requestBody)}');
 
-      // Usar o novo serviço de pagamento
-      final responseData = await PaymentService.processCreditCardPayment(
-        amount: widget.amount,
-        token: token,
-        description: 'Pagamento FTW Soluções',
-        payer: paymentData['payer'],
-        installments: 1,
-        paymentMethodId: 'master',
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:3001/create-payment'),
+        headers: headers,
+        body: jsonEncode(requestBody),
       );
 
-      if (!mounted) return;
+      print('=== DEBUG: Resposta recebida ===');
+      print('Status Code: ${response.statusCode}');
+      print('Response Headers: ${response.headers}');
+      print('Response Body: ${response.body}');
 
-      debugPrint('Pagamento processado com sucesso. ID: ${responseData['id']}');
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              SuccessScreen(paymentId: responseData['id'].toString()),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Erro ao processar pagamento: $e');
-      if (!mounted) return;
-      setState(() {
-        _errorMessage = e.toString();
-      });
-    } finally {
-      if (mounted) {
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('Resposta do backend:');
+        print(data);
+        final qr =
+            data['point_of_interaction']?['transaction_data']?['qr_code'];
+        print('QR recebido: $qr');
         setState(() {
-          _isProcessing = false;
+          _pixQrCode = qr;
+          _paymentId = data['id'].toString();
+        });
+        _startStatusPolling();
+      } else {
+        setState(() {
+          _errorMessage = 'Erro ao criar pagamento: ${response.body}';
         });
       }
+    } catch (e) {
+      print('=== DEBUG: Erro na requisição ===');
+      print('Erro: $e');
+      setState(() {
+        _errorMessage = 'Erro ao criar pagamento: $e';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
     }
+  }
+
+  void _startStatusPolling() {
+    _statusTimer?.cancel();
+    if (_paymentId == null) return;
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      final status = await _consultarStatusPagamento();
+      if (status == 'approved') {
+        _statusTimer?.cancel();
+        if (mounted) {
+          await _onPaymentSuccess();
+        }
+      }
+    });
+  }
+
+  Future<String?> _consultarStatusPagamento() async {
+    if (_paymentId == null) return null;
+    try {
+      final response = await http.get(
+        Uri.parse('http://10.0.2.2:3001/payment-status/$_paymentId'),
+        headers: {
+          'x-idempotency-key': const Uuid().v4(),
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['status'] as String?;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> _processPixPayment() async {
@@ -225,8 +208,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
 
-      final idempotencyKey = const Uuid().v4();
-
       final paymentData = {
         'transaction_amount': widget.amount,
         'payment_method_id': 'pix',
@@ -240,7 +221,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             'number': cpf.replaceAll(RegExp(r'[^\d]'), ''),
           },
         },
-        'metadata': {'user_id': user.uid, 'order_id': idempotencyKey},
+        'metadata': {'user_id': user.uid, 'order_id': const Uuid().v4()},
       };
 
       final response = await http.post(
@@ -248,7 +229,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-Idempotency-Key': idempotencyKey,
         },
         body: jsonEncode(paymentData),
       );
@@ -276,6 +256,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  Future<void> _onPaymentSuccess() async {
+    // Atualizar status do agendamento para 'confirmed'
+    if (widget.appointmentId.isNotEmpty) {
+      await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .update({'status': 'confirmed'});
+    }
+    // Navegar para tela Home
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomeScreen(authService: AuthService()),
+          settings: const RouteSettings(arguments: 'pagamento_sucesso'),
+        ),
+        (route) => false,
+      );
+    }
+  }
+
   void _navigateToProfile() {
     Navigator.pushReplacement(
       context,
@@ -285,211 +286,438 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
+  static const String mpPublicKey =
+      'APP_USR-fa719c8f-9ea0-488c-bdd7-a408c5477d3b'; // Troque pela sua public_key
+
+  Future<String?> gerarTokenCartao({
+    required String cardNumber,
+    required String expirationMonth,
+    required String expirationYear,
+    required String cvv,
+    required String cardholderName,
+    required String cpf,
+  }) async {
+    print('=== DEBUG: Gerando token do cartão ===');
+    final url = Uri.parse(
+        'https://api.mercadopago.com/v1/card_tokens?public_key=$mpPublicKey');
+    print('URL: $url');
+    print('Headers: {"Content-Type": "application/json"}');
+
+    // Limpar o CPF para garantir consistência
+    final cleanCpf = cpf.replaceAll(RegExp(r'[^\d]'), '');
+    print('CPF original: $cpf');
+    print('CPF limpo: $cleanCpf');
+
+    final requestBody = {
+      'card_number': cardNumber.replaceAll(' ', ''),
+      'expiration_month': int.parse(expirationMonth),
+      'expiration_year': int.parse('20$expirationYear'),
+      'security_code': cvv,
+      'cardholder': {
+        'name': cardholderName,
+        'identification': {
+          'type': 'CPF',
+          'number': cleanCpf,
+        }
+      }
+    };
+    print('Body: ${jsonEncode(requestBody)}');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(requestBody),
+    );
+
+    print('=== DEBUG: Resposta da geração de token ===');
+    print('Status Code: ${response.statusCode}');
+    print('Response Headers: ${response.headers}');
+    print('Response Body: ${response.body}');
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return data['id']; // Este é o cardToken
+    } else {
+      print('Erro ao gerar token: ${response.body}');
+      setState(() {
+        _cardError = 'Erro ao gerar token do cartão: ${response.body}';
+      });
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Pagamento')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+      body: Column(
+        children: [
+          const SizedBox(height: 24),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildPaymentOptionCard(
+                  selected: _selectedTab == 0,
+                  icon: Image.asset('assets/images/pix.png',
+                      height: 40, width: 40),
+                  label: 'Pix',
+                  onTap: () => setState(() => _selectedTab = 0),
+                  color: Colors.green,
+                ),
+                const SizedBox(width: 24),
+                _buildPaymentOptionCard(
+                  selected: _selectedTab == 1,
+                  icon: const Icon(Icons.credit_card,
+                      size: 40, color: Colors.white),
+                  label: 'Cartão',
+                  onTap: () => setState(() => _selectedTab = 1),
+                  color: Colors.blue,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: _selectedTab == 0
+                  ? _buildPixWidget()
+                  : _buildCreditCardWidget(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentOptionCard({
+    required bool selected,
+    required Widget icon,
+    required String label,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 120,
+        height: 120,
+        decoration: BoxDecoration(
+          color: selected ? color : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [],
+          border: Border.all(
+            color: selected ? color : Colors.grey.shade300,
+            width: selected ? 3 : 1,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            icon,
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.white : Colors.black87,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPixWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const Text('Escaneie o QR Code Pix para pagar:',
+                style: TextStyle(fontSize: 18)),
+            const SizedBox(height: 24),
+            if (_pixQrCode != null && _pixQrCode!.isNotEmpty)
+              Center(
+                child: QrImageView(
+                  data: _pixQrCode!,
+                  size: 200.0,
+                ),
+              ),
+            if (_pixQrCode == null || _pixQrCode!.isEmpty)
+              const Text(
+                  'QR Code não recebido. Verifique o backend e os prints.'),
+            const SizedBox(height: 24),
+            if (_pixQrCode != null)
+              Center(
+                child: SelectableText(_pixQrCode!,
+                    style: const TextStyle(fontSize: 16),
+                    textAlign: TextAlign.center),
+              ),
+            const SizedBox(height: 16),
+            const Text('Após o pagamento, a confirmação é automática.',
+                style: TextStyle(color: Colors.green)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreditCardWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        _errorMessage!,
-                        style: TextStyle(color: Colors.red.shade900),
-                        textAlign: TextAlign.center,
-                      ),
-                      if (_errorMessage!.contains('complete seu cadastro'))
-                        TextButton(
-                          onPressed: _navigateToProfile,
-                          child: const Text('Ir para o Perfil'),
-                        ),
-                    ],
-                  ),
-                ),
               Text(
                 'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
                 style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Text(
+                'Pagamento com Cartão',
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 32),
-              Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(
-                        () => _selectedPaymentMethod = 'credit_card',
-                      ),
-                      child: Card(
-                        elevation:
-                            _selectedPaymentMethod == 'credit_card' ? 4 : 1,
-                        color: _selectedPaymentMethod == 'credit_card'
-                            ? Colors.blue.shade50
-                            : Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.credit_card,
-                                size: 32,
-                                color: _selectedPaymentMethod == 'credit_card'
-                                    ? Colors.blue
-                                    : Colors.grey,
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Cartão de Crédito',
-                                style: TextStyle(fontWeight: FontWeight.w500),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () =>
-                          setState(() => _selectedPaymentMethod = 'pix'),
-                      child: Card(
-                        elevation: _selectedPaymentMethod == 'pix' ? 4 : 1,
-                        color: _selectedPaymentMethod == 'pix'
-                            ? Colors.blue.shade50
-                            : Colors.white,
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Image.asset(
-                                'assets/images/pix.png',
-                                height: 32,
-                                width: 32,
-                                color: _selectedPaymentMethod == 'pix'
-                                    ? Colors.blue
-                                    : Colors.grey,
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'PIX',
-                                style: TextStyle(fontWeight: FontWeight.w500),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-              if (_selectedPaymentMethod == 'credit_card')
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _isProcessing ? null : _processCreditCardPayment,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      backgroundColor: Theme.of(context).primaryColor,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: _isProcessing
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                        : const Text(
-                            'Pagar com Cartão',
-                            style: TextStyle(fontSize: 16),
-                          ),
-                  ),
-                )
-              else if (_selectedPaymentMethod == 'pix')
-                Column(
+              const SizedBox(height: 24),
+              Form(
+                key: _formKey,
+                child: Column(
                   children: [
-                    if (_pixQrCodeImage != null)
-                      Image.memory(
-                        base64Decode(_pixQrCodeImage!),
-                        height: 200,
-                        width: 200,
-                      )
-                    else
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isProcessing ? null : _processPixPayment,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            backgroundColor: Theme.of(context).primaryColor,
-                            foregroundColor: Colors.white,
+                    TextFormField(
+                      controller: _cardNumberController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(19),
+                        _CardNumberInputFormatter(),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'Número do Cartão',
+                        prefixIcon: const Icon(Icons.credit_card),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 18, horizontal: 16),
+                        hintText: '1234 5678 9012 3456',
+                      ),
+                      validator: (v) =>
+                          v == null || v.replaceAll(' ', '').length < 16
+                              ? 'Número inválido'
+                              : null,
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: _expiryController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(4),
+                              _ExpiryDateInputFormatter(),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Validade (MM/AA)',
+                              prefixIcon: const Icon(Icons.date_range),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              filled: true,
+                              fillColor: Colors.grey[100],
+                              contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 18, horizontal: 16),
+                              hintText: '12/25',
+                            ),
+                            validator: (v) =>
+                                v == null || v.length < 5 ? 'Inválido' : null,
                           ),
-                          child: _isProcessing
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                )
-                              : const Text(
-                                  'Gerar PIX',
-                                  style: TextStyle(fontSize: 16),
-                                ),
                         ),
-                      ),
-                    if (_pixQrCode != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _cvvController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(4),
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'CVV',
+                              prefixIcon: const Icon(Icons.lock),
+                              border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              filled: true,
+                              fillColor: Colors.grey[100],
+                              contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 18, horizontal: 16),
+                              hintText: '123',
+                            ),
+                            validator: (v) =>
+                                v == null || v.length < 3 ? 'Inválido' : null,
+                          ),
                         ),
-                        child: Column(
-                          children: [
-                            _buildAccountInfoRow('Código PIX', _pixQrCode!),
-                          ],
-                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: InputDecoration(
+                        labelText: 'Nome no Cartão',
+                        prefixIcon: const Icon(Icons.person),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 18, horizontal: 16),
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Escaneie o código QR com seu aplicativo de pagamento',
-                        textAlign: TextAlign.center,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? 'Obrigatório' : null,
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: _cpfController,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(14),
+                        _CpfInputFormatter(),
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'CPF do Titular',
+                        prefixIcon: const Icon(Icons.badge),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        filled: true,
+                        fillColor: Colors.grey[100],
+                        contentPadding: const EdgeInsets.symmetric(
+                            vertical: 18, horizontal: 16),
+                        hintText: '123.456.789-00',
                       ),
-                      const SizedBox(height: 16),
-                      OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.copy),
-                        label: const Text('Copiar Código PIX'),
-                      ),
-                    ],
+                      validator: (v) =>
+                          v == null || v.length < 14 ? 'CPF inválido' : null,
+                    ),
                   ],
                 ),
+              ),
+              if (_cardError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(_cardError!,
+                      style: const TextStyle(color: Colors.red)),
+                ),
+              if (_cardSuccess != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(_cardSuccess!,
+                      style: const TextStyle(color: Colors.green)),
+                ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.credit_card),
+                  label: _isCardProcessing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Pagar com Cartão',
+                          style: TextStyle(fontSize: 18)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  onPressed: _isCardProcessing
+                      ? null
+                      : () async {
+                          if (_formKey.currentState?.validate() ?? false) {
+                            setState(() {
+                              _isCardProcessing = true;
+                              _cardError = null;
+                              _cardSuccess = null;
+                            });
+                            final exp = _expiryController.text.split('/');
+                            if (exp.length != 2) {
+                              setState(() {
+                                _cardError = 'Validade inválida';
+                                _isCardProcessing = false;
+                              });
+                              return;
+                            }
+                            final cardToken = await gerarTokenCartao(
+                              cardNumber: _cardNumberController.text,
+                              expirationMonth: exp[0],
+                              expirationYear: exp[1],
+                              cvv: _cvvController.text,
+                              cardholderName: _nameController.text,
+                              cpf: _cpfController.text,
+                            );
+                            if (cardToken != null) {
+                              try {
+                                await pagarComCartao(cardToken);
+                                setState(() {
+                                  _cardSuccess =
+                                      'Pagamento realizado com sucesso!';
+                                });
+                              } catch (e) {
+                                setState(() {
+                                  _cardError =
+                                      'Erro ao processar pagamento: $e';
+                                });
+                              } finally {
+                                setState(() {
+                                  _isCardProcessing = false;
+                                });
+                              }
+                            } else {
+                              setState(() {
+                                _isCardProcessing = false;
+                              });
+                            }
+                          }
+                        },
+                ),
+              ),
             ],
           ),
         ),
@@ -519,6 +747,140 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Implementar lógica para gerar token do cartão
+  // Future<String?> _generateCardToken() async {
+  //   // Lógica para gerar token do cartão usando SDK do Mercado Pago
+  //   // Exemplo:
+  //   // try {
+  //   //   final response = await http.post(
+  //   //     Uri.parse('https://api.mercadopago.com/v1/card_tokens'),
+  //   //     headers: {
+  //   //       'Authorization': 'Bearer YOUR_ACCESS_TOKEN', // Substitua pelo seu token
+  //   //       'Content-Type': 'application/json',
+  //   //     },
+  //   //     body: jsonEncode({
+  //   //       'card_number': '4532 4567 8901 2345', // Número do cartão
+  //   //       'expiration_month': '12', // Mês de validade
+  //   //       'expiration_year': '25', // Ano de validade
+  //   //       'security_code': '123', // Código CVV
+  //   //       'cardholder': {
+  //   //         'name': 'Nome do Cartão',
+  //   //       },
+  //   //     }),
+  //   //   );
+  //   //   if (response.statusCode == 200) {
+  //   //     final data = jsonDecode(response.body);
+  //   //     return data['id'];
+  //   //   }
+  //   // } catch (e) {
+  //   //   print('Erro ao gerar token do cartão: $e');
+  //   // }
+  //   return null;
+  // }
+
+  // Implementar lógica para pagar com cartão
+  Future<void> pagarComCartao(String cardToken) async {
+    print('=== DEBUG: Iniciando pagamento com cartão ===');
+    print('URL: http://10.0.2.2:3001/create-creditcard-payment');
+
+    final headers = {
+      'Content-Type': 'application/json',
+      'x-idempotency-key': const Uuid().v4(),
+    };
+    print('Headers: ${jsonEncode(headers)}');
+
+    // Limpar o CPF para garantir consistência
+    final cleanCpf = _cpfController.text.replaceAll(RegExp(r'[^\d]'), '');
+    print('CPF para pagamento: $cleanCpf');
+
+    final requestBody = {
+      'amount': widget.amount,
+      'description': widget.serviceDescription,
+      'payer': {
+        'email': 'usuario@email.com',
+        'cpf': cleanCpf,
+      },
+      'cardToken': cardToken,
+    };
+    print('Body: ${jsonEncode(requestBody)}');
+
+    final response = await http.post(
+      Uri.parse('http://10.0.2.2:3001/create-creditcard-payment'),
+      headers: headers,
+      body: jsonEncode(requestBody),
+    );
+
+    print('=== DEBUG: Resposta do pagamento com cartão ===');
+    print('Status Code: ${response.statusCode}');
+    print('Response Headers: ${response.headers}');
+    print('Response Body: ${response.body}');
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final status = data['status'] as String?;
+      if (status == 'approved') {
+        await _onPaymentSuccess();
+      } else {
+        setState(() {
+          _cardError = 'Pagamento não aprovado. Status: $status';
+        });
+      }
+    } else {
+      setState(() {
+        _cardError = 'Erro ao processar pagamento: ${response.body}';
+      });
+    }
+  }
+}
+
+class _CardNumberInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length; i++) {
+      if (i != 0 && i % 4 == 0) buffer.write(' ');
+      buffer.write(digits[i]);
+    }
+    return TextEditingValue(
+      text: buffer.toString(),
+      selection: TextSelection.collapsed(offset: buffer.length),
+    );
+  }
+}
+
+class _ExpiryDateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var text = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (text.length > 2) {
+      text = text.substring(0, 2) + '/' + text.substring(2, text.length);
+    }
+    if (text.length > 5) text = text.substring(0, 5);
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+class _CpfInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var text = newValue.text.replaceAll(RegExp(r'\D'), '');
+    if (text.length > 3) text = text.substring(0, 3) + '.' + text.substring(3);
+    if (text.length > 7) text = text.substring(0, 7) + '.' + text.substring(7);
+    if (text.length > 11)
+      text = text.substring(0, 11) + '-' + text.substring(11);
+    if (text.length > 14) text = text.substring(0, 14);
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

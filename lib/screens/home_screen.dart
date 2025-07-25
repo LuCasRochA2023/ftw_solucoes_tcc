@@ -8,6 +8,8 @@ import 'package:ftw_solucoes/screens/services_screen.dart';
 import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:ftw_solucoes/screens/service_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -21,6 +23,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   String _userName = '';
   String? _photoUrl;
+  bool _snackbarShown = false;
 
   @override
   void initState() {
@@ -109,6 +112,22 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Exibe Snackbar de sucesso se argumento for passado, apenas uma vez
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_snackbarShown) {
+        final args = ModalRoute.of(context)?.settings.arguments;
+        if (args is String && args == 'pagamento_sucesso') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Pagamento realizado com sucesso!',
+                  style: GoogleFonts.poppins()),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _snackbarShown = true;
+        }
+      }
+    });
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -276,110 +295,228 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: const Color(0xFF2196F3),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.blue.withOpacity(0.3),
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  'FTW',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 24),
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2196F3),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    'FTW',
+                    style: GoogleFonts.poppins(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Bem-vindo à FTW Soluções',
-              style: GoogleFonts.poppins(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Seu parceiro em soluções automotivas',
-              style: GoogleFonts.poppins(
-                color: Colors.black54,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AvailableServicesScreen(
-                        authService: widget.authService),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
-              ),
-              icon: const Icon(Icons.build_outlined),
-              label: Text(
-                'Conheça os Serviços',
+              const SizedBox(height: 24),
+              Text(
+                'Bem-vindo à FTW Soluções',
                 style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SobreScreen(),
+                      ),
+                    );
+                  },
+                  child: Text(
+                    'Conheça a FTW!',
+                    style: GoogleFonts.poppins(
+                      color: Colors.blueAccent,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      decoration: TextDecoration.underline,
+                      letterSpacing: 1.2,
+                      shadows: [
+                        Shadow(
+                          color: Colors.blue.withOpacity(0.2),
+                          offset: Offset(0, 2),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AvailableServicesScreen(
+                          authService: widget.authService),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+                icon: const Icon(Icons.build_outlined),
+                label: Text(
+                  'Conheça os Serviços',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ServiceHistoryScreen(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+                icon: const Icon(Icons.history),
+                label: Text(
+                  'Meus Agendamentos',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchAppointments() async {
+    final user = widget.authService.currentUser;
+    if (user == null) return [];
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('appointments')
+        .where('userId', isEqualTo: user.uid)
+        .get();
+    final appointments = querySnapshot.docs.map((doc) {
+      final data = doc.data();
+      data['id'] = doc.id;
+      return data;
+    }).toList();
+    appointments.sort((a, b) {
+      final dateA = (a['dateTime'] as Timestamp).toDate();
+      final dateB = (b['dateTime'] as Timestamp).toDate();
+      return dateB.compareTo(dateA);
+    });
+    return appointments;
+  }
+
+  String _getServiceDuration(String service) {
+    // Exemplo de tempos para cada serviço
+    switch (service.toLowerCase()) {
+      case 'lavagem suv':
+      case 'lavagem carro comum':
+        return '1h';
+      case 'lavagem caminhonete':
+        return '1h 30min';
+      case 'leva e traz':
+        return '30min';
+      case 'espelhamento':
+        return '2h';
+      case 'polimento':
+        return '2h';
+      case 'higienização':
+        return '1h 30min';
+      case 'hidratação de couro':
+        return '1h';
+      case 'enceramento':
+        return '1h';
+      case 'cristalização de faróis':
+        return '40min';
+      case 'remoção de chuva ácida':
+        return '1h';
+      case 'lavagem do motor':
+        return '40min';
+      case 'revitalização de para-choques e plásticos':
+        return '50min';
+      case 'higienização interna com extratora':
+        return '1h 20min';
+      case 'micropintura':
+        return '1h';
+      case 'lavagem por baixo do veículo':
+        return '1h';
+      default:
+        return '1h';
+    }
+  }
+}
+
+class SobreScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Sobre a FTW', style: GoogleFonts.poppins()),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Apresentação Institucional – FTW Soluções Automotivas',
+              style: GoogleFonts.poppins(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        ServicesScreen(authService: widget.authService),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
-              ),
-              icon: const Icon(Icons.history),
-              label: Text(
-                'Meus Agendamentos',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            Text(
+              'Desde 2013, a FTW Soluções Automotivas atua com excelência no segmento de lavagem e estética automotiva em Porto Alegre, oferecendo serviços de alta qualidade para um público exigente e apaixonado por carros.\n'
+              'Nossa missão é entregar não apenas veículos limpos, mas experiências marcantes, através de um cuidado minucioso com cada detalhe. Trabalhamos com produtos de primeira linha e técnicas especializadas, garantindo um resultado superior e duradouro.\n'
+              'Com mais de uma década de história, construímos uma reputação sólida baseada na confiança, no comprometimento e no padrão de qualidade FTW, que pode ser visto no brilho de cada carro que passa por nossas mãos.\n'
+              'Seja para proteger, restaurar ou simplesmente valorizar a aparência do seu veículo, a FTW é a escolha certa para quem trata o carro como uma verdadeira paixão.',
+              style: GoogleFonts.poppins(fontSize: 16),
             ),
           ],
         ),

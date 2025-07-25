@@ -150,10 +150,38 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                       final appointment = _appointments[index];
                       final dateTime =
                           (appointment['dateTime'] as Timestamp).toDate();
+                      final carData = appointment['car'];
+                      final services = appointment['services'] as List?;
+                      String serviceTitles = '';
+                      if (services != null && services.isNotEmpty) {
+                        serviceTitles = services
+                            .map((s) => s['title'] ?? 'Serviço')
+                            .join(', ');
+                      } else {
+                        serviceTitles =
+                            appointment['service'] as String? ?? 'Serviço';
+                      }
                       final status =
                           appointment['status'] as String? ?? 'unknown';
-                      final carData = appointment['car'];
-
+                      String statusText = _getStatusText(status);
+                      Color statusColor = _getStatusColor(status);
+                      IconData statusIcon;
+                      switch (status) {
+                        case 'pending':
+                          statusIcon = Icons.access_time;
+                          break;
+                        case 'confirmed':
+                          statusIcon = Icons.check_circle;
+                          break;
+                        case 'completed':
+                          statusIcon = Icons.star;
+                          break;
+                        case 'cancelled':
+                          statusIcon = Icons.cancel;
+                          break;
+                        default:
+                          statusIcon = Icons.info;
+                      }
                       return Card(
                         margin: const EdgeInsets.only(bottom: 16),
                         child: Padding(
@@ -161,45 +189,44 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      appointment['service'] as String? ??
-                                          'N/A',
+                              Text(
+                                serviceTitles,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(statusIcon,
+                                        color: statusColor, size: 18),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      statusText,
                                       style: GoogleFonts.poppins(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _getStatusColor(status)
-                                          .withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      _getStatusText(status),
-                                      style: GoogleFonts.poppins(
-                                        color: _getStatusColor(status),
+                                        color: statusColor,
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                DateFormat('dd/MM/yyyy HH:mm').format(dateTime),
+                                'Data/Hora: ' +
+                                    DateFormat('dd/MM/yyyy HH:mm')
+                                        .format(dateTime),
                                 style: GoogleFonts.poppins(
-                                  color: Colors.grey[600],
+                                  color: Colors.grey[700],
                                 ),
                               ),
                               if (carData != null) ...[
@@ -207,10 +234,77 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                 Text(
                                   'Carro: ${(carData as Map<String, dynamic>)['name'] ?? 'N/A'} - ${(carData)['plate'] ?? 'N/A'}',
                                   style: GoogleFonts.poppins(
-                                    color: Colors.grey[600],
+                                    color: Colors.grey[700],
                                   ),
                                 ),
                               ],
+                              if (services != null && services.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Serviços:',
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                ...services.map((s) => Padding(
+                                      padding: const EdgeInsets.only(
+                                          left: 8, top: 2),
+                                      child: Text(
+                                        '- ${s['title'] ?? 'Serviço'} (${s['duration'] ?? '?'} min)',
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.grey[800],
+                                        ),
+                                      ),
+                                    )),
+                              ],
+                              if (status == 'pending' || status == 'confirmed')
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton.icon(
+                                    icon: const Icon(Icons.cancel,
+                                        color: Colors.red),
+                                    label: Text('Cancelar',
+                                        style: GoogleFonts.poppins(
+                                            color: Colors.red)),
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: Text('Cancelar Agendamento',
+                                              style: GoogleFonts.poppins(
+                                                  fontWeight: FontWeight.bold)),
+                                          content: Text(
+                                              'Tem certeza que deseja cancelar este agendamento?',
+                                              style: GoogleFonts.poppins()),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.of(context)
+                                                      .pop(false),
+                                              child: Text('Não',
+                                                  style: GoogleFonts.poppins()),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: () =>
+                                                  Navigator.of(context)
+                                                      .pop(true),
+                                              child: Text('Sim, Cancelar',
+                                                  style: GoogleFonts.poppins()),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm == true) {
+                                        await FirebaseFirestore.instance
+                                            .collection('appointments')
+                                            .doc(appointment['id'])
+                                            .update({'status': 'cancelled'});
+                                        _loadAppointments();
+                                      }
+                                    },
+                                  ),
+                                ),
                             ],
                           ),
                         ),

@@ -16,8 +16,6 @@ class PaymentService {
     String paymentMethodId = 'master',
   }) async {
     try {
-      final idempotencyKey = const Uuid().v4();
-
       final paymentData = {
         'transaction_amount': amount,
         'token': token,
@@ -32,7 +30,6 @@ class PaymentService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-Idempotency-Key': idempotencyKey,
         },
         body: jsonEncode(paymentData),
       );
