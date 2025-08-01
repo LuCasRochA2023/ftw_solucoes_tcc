@@ -222,9 +222,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Data/Hora: ' +
-                                    DateFormat('dd/MM/yyyy HH:mm')
-                                        .format(dateTime),
+                                'Data/Hora: ${DateFormat('dd/MM/yyyy HH:mm')
+                                        .format(dateTime)}',
                                 style: GoogleFonts.poppins(
                                   color: Colors.grey[700],
                                 ),

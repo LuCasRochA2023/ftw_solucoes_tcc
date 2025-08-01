@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:ftw_solucoes/screens/schedule_service_screen.dart';
-import 'package:ftw_solucoes/screens/home_screen.dart'; // Added import for HomeScreen
 
 class AvailableServicesScreen extends StatefulWidget {
   final AuthService authService;

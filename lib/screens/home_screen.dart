@@ -4,11 +4,9 @@ import 'package:ftw_solucoes/screens/settings_screen.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
-import 'package:ftw_solucoes/screens/services_screen.dart';
 import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
