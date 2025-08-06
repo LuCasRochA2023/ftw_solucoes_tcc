@@ -390,129 +390,141 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           .add(appointmentData);
 
       if (mounted) {
-        // Mostrar tela de sucesso em vez de ir para pagamento
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+        // Verificar se há serviços com valor para determinar o fluxo
+        if (_hasServicesWithPrice() && totalAmount > 0) {
+          // Redirecionar para tela de pagamento
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PaymentScreen(
+                amount: totalAmount,
+                serviceTitle: _serviceTitles,
+                serviceDescription: widget.services.map((s) => s['description'] as String).join(', '),
+                carId: _selectedCar!['id'],
+                carModel: _selectedCar!['model'],
+                carPlate: _selectedCar!['plate'],
+                appointmentId: docRef.id,
+              ),
             ),
-            title: Row(
-              children: [
-                Icon(
-                  Icons.check_circle,
-                  color: Colors.green,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Agendamento Realizado!',
-                    style: GoogleFonts.poppins(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
+          );
+        } else {
+          // Mostrar dialog de sucesso para serviços sem valor
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
                 children: [
-                  Text(
-                    'Seu agendamento foi realizado com sucesso!',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
+                  Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Agendamento Realizado!',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green[50],
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green[200]!),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Seu agendamento foi realizado com sucesso!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Detalhes do Agendamento:',
-                          style: GoogleFonts.poppins(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green[700],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '• Serviços: $_serviceTitles',
-                          style: GoogleFonts.poppins(fontSize: 14),
-                          overflow: TextOverflow.visible,
-                        ),
-                        Text(
-                          '• Data: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}',
-                          style: GoogleFonts.poppins(fontSize: 14),
-                        ),
-                        Text(
-                          '• Horário: $_selectedTime',
-                          style: GoogleFonts.poppins(fontSize: 14),
-                        ),
-                        Text(
-                          '• Carro: ${_selectedCar!['model']} - ${_selectedCar!['plate']}',
-                          style: GoogleFonts.poppins(fontSize: 14),
-                          overflow: TextOverflow.visible,
-                        ),
-                        if (_hasServicesWithPrice()) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            '• Valor: R\$ ${totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                            'Detalhes do Agendamento:',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• Serviços: $_serviceTitles',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            overflow: TextOverflow.visible,
+                          ),
+                          Text(
+                            '• Data: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}',
                             style: GoogleFonts.poppins(fontSize: 14),
                           ),
-                        ] else ...[
+                          Text(
+                            '• Horário: $_selectedTime',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                          Text(
+                            '• Carro: ${_selectedCar!['model']} - ${_selectedCar!['plate']}',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            overflow: TextOverflow.visible,
+                          ),
                           Text(
                             '• Valor: Preço a combinar',
                             style: GoogleFonts.poppins(fontSize: 14),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Você receberá uma confirmação por email e poderá acompanhar o status do seu agendamento.',
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      color: Colors.black54,
+                    const SizedBox(height: 16),
+                    Text(
+                      'Você receberá uma confirmação por email e poderá acompanhar o status do seu agendamento.',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Fechar dialog
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          HomeScreen(authService: widget.authService),
-                    ),
-                    (route) => false, // Remove todas as rotas anteriores
-                  );
-                },
-                child: Text(
-                  'Voltar ao Início',
-                  style: GoogleFonts.poppins(
-                    fontWeight: FontWeight.bold,
-                    color: _mainColor,
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        );
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Fechar dialog
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            HomeScreen(authService: widget.authService),
+                      ),
+                      (route) => false, // Remove todas as rotas anteriores
+                    );
+                  },
+                  child: Text(
+                    'Voltar ao Início',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      color: _mainColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('Error scheduling service: $e');

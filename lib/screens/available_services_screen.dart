@@ -416,7 +416,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'title': 'Lavagem SUV',
         'subtitle': 'Premium',
         'description':
-            'Lavagem completa externa e interna com produtos premium, incluindo secagem manual',
+            'Lavagem completa externa e interna com produtos premium',
         'icon': Icons.directions_car,
         'color': Colors.lightBlue,
         'price': 'R\$ 80,00',
@@ -424,8 +424,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Lavagem Carro Comum',
         'subtitle': 'Neutro',
-        'description':
-            'Lavagem detalhada externa e interna com shampoo neutro, secagem manual e tratamento dos pneus',
+        'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
         'color': Colors.blueAccent,
         'price': 'R\$ 70,00',
@@ -433,8 +432,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Lavagem Caminhonete',
         'subtitle': 'Completa',
-        'description':
-            'Lavagem especializada para veículos grandes, incluindo limpeza da caçamba e tratamento da pintura',
+        'description': 'Lavagem especializada para veículos grandes',
         'icon': Icons.local_shipping,
         'color': Colors.indigo,
         'price': 'R\$ 100,00',
@@ -442,8 +440,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Leva e Traz',
         'subtitle': 'Busca + Entrega',
-        'description':
-            'Serviço completo de busca, lavagem e entrega do seu veículo no local combinado',
+        'description': 'Busca, lavagem e entrega do veículo',
         'icon': Icons.directions_car_filled,
         'color': Colors.purple,
         'price': 'R\$ 20,00',
@@ -454,8 +451,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Espelhamento',
         'subtitle': 'Riscos',
-        'description':
-            'Remoção de riscos superficiais e correção de manchas para restaurar o brilho original da pintura',
+        'description': 'Remoção de riscos superficiais e correção de manchas',
         'icon': Icons.auto_awesome,
         'color': Colors.purple,
         'price': 'Preço a combinar',
@@ -463,8 +459,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Polimento',
         'subtitle': 'Profundo',
-        'description':
-            'Correção de imperfeições profundas na pintura para restaurar o brilho e acabamento original',
+        'description': 'Correção de imperfeições profundas na pintura',
         'icon': Icons.cleaning_services,
         'color': Colors.orange,
         'price': 'Preço a combinar',
@@ -472,8 +467,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Higienização',
         'subtitle': 'Profunda',
-        'description':
-            'Limpeza profunda do interior com extratora, remoção de odores e tratamento antibacteriano',
+        'description': 'Limpeza profunda do interior com extratora',
         'icon': Icons.cleaning_services_outlined,
         'color': Colors.green,
         'price': 'Preço a combinar',
@@ -481,8 +475,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Hidratação de Couro',
         'subtitle': 'Especializado',
-        'description':
-            'Limpeza, hidratação e proteção de bancos e painéis em couro para manter a durabilidade e aparência',
+        'description': 'Limpeza, hidratação e proteção de bancos em couro',
         'icon': Icons.chair_alt,
         'color': Colors.brown,
         'price': 'Preço a combinar',
@@ -490,8 +483,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Enceramento',
         'subtitle': 'Carnaúba',
-        'description':
-            'Aplicação de cera de carnaúba natural para proteção da pintura e brilho intenso e duradouro',
+        'description': 'Aplicação de cera de carnaúba natural',
         'icon': Icons.auto_awesome_motion,
         'color': Colors.teal,
         'price': 'Preço a combinar',
@@ -499,8 +491,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Cristalização de Faróis',
         'subtitle': 'Restauração',
-        'description':
-            'Restauração do brilho original dos faróis com remoção de amarelamento e aplicação de proteção UV',
+        'description': 'Restauração do brilho original dos faróis',
         'icon': Icons.lightbulb_outline,
         'color': Colors.amber,
         'price': 'Preço a combinar',
@@ -508,8 +499,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Remoção de chuva ácida',
         'subtitle': 'Tratamento Especializado',
-        'description':
-            'Tratamento especializado para remover manchas causadas por chuva ácida na pintura com produtos específicos',
+        'description': 'Tratamento para remover manchas de chuva ácida',
         'icon': Icons.water_drop,
         'color': Colors.blueGrey,
         'price': 'Preço a combinar',
@@ -517,8 +507,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Lavagem do motor',
         'subtitle': 'Limpeza Segura',
-        'description':
-            'Lavagem segura do compartimento do motor com proteção de componentes elétricos',
+        'description': 'Lavagem segura do compartimento do motor',
         'icon': Icons.settings,
         'color': Colors.grey,
         'price': 'Preço a combinar',
@@ -526,8 +515,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Revitalização de para-choques e plásticos',
         'subtitle': 'Restauração + Proteção',
-        'description':
-            'Restauração da cor original e proteção de para-choques e plásticos externos com produtos específicos',
+        'description': 'Restauração da cor original e proteção',
         'icon': Icons.crop_16_9,
         'color': Colors.black54,
         'price': 'Preço a combinar',
@@ -535,8 +523,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Higienização interna com extratora',
         'subtitle': 'Limpeza Profunda',
-        'description':
-            'Limpeza profunda de estofados e carpetes com extratora profissional e produtos específicos',
+        'description': 'Limpeza profunda de estofados e carpetes',
         'icon': Icons.chair,
         'color': Colors.lightGreen,
         'price': 'Preço a combinar',
@@ -544,16 +531,14 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       {
         'title': 'Micropintura',
         'subtitle': 'Correção + Polimento',
-        'description':
-            'Correção de pequenos riscos e arranhões com tinta original e polimento',
+        'description': 'Correção de pequenos riscos e arranhões',
         'icon': Icons.brush,
         'color': Colors.deepOrange,
         'price': 'Preço a combinar',
       },
       {
         'title': 'Lavagem por baixo do veículo',
-        'description':
-            'Limpeza completa da parte inferior com aplicação de protetor anticorrosivo',
+        'description': 'Limpeza completa da parte inferior',
         'icon': Icons.vertical_align_bottom,
         'color': Colors.brown,
         'price': 'Preço a combinar',
@@ -605,21 +590,21 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             ),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               itemCount: services.length,
               itemBuilder: (context, index) {
                 final service = services[index];
                 final isSelected = _selectedIndexes.contains(index);
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  elevation: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  elevation: 3,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
                     onTap: () => _onServiceTap(index, service),
                     leading: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: service['title'] == 'Leva e Traz' &&
                                 !_levaETrazAvailable
@@ -630,7 +615,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                       child: Icon(
                         service['icon'],
                         color: Colors.white,
-                        size: 28,
+                        size: 24,
                       ),
                     ),
                     trailing: Row(
@@ -642,13 +627,13 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                           icon: Icon(
                             Icons.info_outline,
                             color: service['color'],
-                            size: 24,
+                            size: 20,
                           ),
                           tooltip: 'Saiba mais sobre este serviço',
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(
-                            minWidth: 40,
-                            minHeight: 40,
+                            minWidth: 32,
+                            minHeight: 32,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -658,6 +643,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                               ? Icons.check_circle
                               : Icons.circle_outlined,
                           color: isSelected ? service['color'] : Colors.grey,
+                          size: 20,
                         ),
                       ],
                     ),
@@ -667,67 +653,51 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                           child: Text(
                             service['title'],
                             style: GoogleFonts.poppins(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: service['title'] == 'Leva e Traz' &&
                                       !_levaETrazAvailable
                                   ? Colors.grey
                                   : null,
                             ),
+                            maxLines: service['title'] == 'Lavagem Caminhonete'
+                                ? 2
+                                : 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         if (service['title'] == 'Leva e Traz' &&
-                            !_levaETrazAvailable)
+                            !_levaETrazAvailable) ...[
+                          const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.orange,
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               'Fora da área',
                               style: GoogleFonts.poppins(
-                                fontSize: 10,
+                                fontSize: 8,
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
+                        ],
                       ],
                     ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          service['description'],
-                          style: GoogleFonts.poppins(
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        if (service['subtitle'] != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              service['subtitle'],
-                              style: GoogleFonts.poppins(
-                                color: service['color'],
-                                fontWeight: FontWeight.w600,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        if (service['price'] != null)
-                          Text(
+                    subtitle: service['price'] != null
+                        ? Text(
                             service['price'],
                             style: GoogleFonts.poppins(
                               color: service['color'],
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                              fontSize: 14,
                             ),
-                          ),
-                      ],
-                    ),
+                          )
+                        : null,
                   ),
                 );
               },
