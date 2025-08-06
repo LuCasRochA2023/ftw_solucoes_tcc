@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
 
 class EnvironmentConfig {
   // Configuração do ambiente
-  static const bool isProduction = true; // Mude para false para desenvolvimento local
+  static const bool isProduction = true; // Usando produção com URL fornecida
   
   // URLs dos backends
   static const String localBackendUrl = 'http://10.0.2.2:3001';
@@ -39,4 +38,4 @@ class EnvironmentConfig {
   
   // Método para verificar se está em desenvolvimento
   static bool get isDevelopmentMode => !isProduction;
-} 
+}

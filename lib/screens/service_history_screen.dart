@@ -87,6 +87,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return 'Concluído';
       case 'cancelled':
         return 'Cancelado';
+      case 'no_payment':
+        return 'Sem Pagamento';
       default:
         return 'Desconhecido';
     }
@@ -102,6 +104,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return Colors.green;
       case 'cancelled':
         return Colors.red;
+      case 'no_payment':
+        return Colors.purple;
       default:
         return Colors.grey;
     }
@@ -179,6 +183,9 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                         case 'cancelled':
                           statusIcon = Icons.cancel;
                           break;
+                        case 'no_payment':
+                          statusIcon = Icons.schedule;
+                          break;
                         default:
                           statusIcon = Icons.info;
                       }
@@ -222,8 +229,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                'Data/Hora: ${DateFormat('dd/MM/yyyy HH:mm')
-                                        .format(dateTime)}',
+                                'Data/Hora: ${DateFormat('dd/MM/yyyy HH:mm').format(dateTime)}',
                                 style: GoogleFonts.poppins(
                                   color: Colors.grey[700],
                                 ),
@@ -256,6 +262,25 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                         ),
                                       ),
                                     )),
+                              ],
+                              const SizedBox(height: 4),
+                              // Informações sobre valor e pagamento
+                              if (appointment['amount'] != null) ...[
+                                Text(
+                                  'Valor: R\$ ${(appointment['amount'] as double).toStringAsFixed(2).replaceAll('.', ',')}',
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  'Valor: Preço a combinar',
+                                  style: GoogleFonts.poppins(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange[700],
+                                  ),
+                                ),
                               ],
                               if (status == 'pending' || status == 'confirmed')
                                 Align(

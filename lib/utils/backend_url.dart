@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart' show kReleaseMode, kIsWeb;
-import 'dart:io' show Platform;
 import 'environment_config.dart';
 
 class BackendUrl {

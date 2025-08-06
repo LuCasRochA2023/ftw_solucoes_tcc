@@ -7,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import '../services/auth_service.dart';
 import 'payment_screen.dart';
 import 'cars_screen.dart';
+import 'home_screen.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> services;
@@ -30,6 +31,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
 
+  // Variáveis para opcionais de cera
+  bool _ceraCarnauba = false;
+  bool _jetCera = false;
+
   final List<String> _timeSlots = [];
   late DateFormat _dateFormat;
   final _firestore = FirebaseFirestore.instance;
@@ -37,12 +42,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Mapa de preços dos serviços
   static const Map<String, double> _servicePrices = {
-    'Lavagem': 50.0,
-    'Espelhamento': 120.0,
-    'Polimento': 150.0,
-    'Higienização': 100.0,
-    'Hidratação de Couro': 180.0,
-    'Leva e Traz': 30.0,
+    'Lavagem SUV': 80.0,
+    'Lavagem Carro Comum': 70.0,
+    'Lavagem Caminhonete': 100.0,
+    'Leva e Traz': 20.0,
   };
 
   int _totalDurationMinutes = 0;
@@ -88,6 +91,48 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return total;
   }
 
+  double _calculateTotalValue() {
+    double total = 0;
+
+    // Calcular valor dos serviços
+    for (final service in widget.services) {
+      final title = service['title'] as String;
+      if (_servicePrices.containsKey(title)) {
+        total += _servicePrices[title]!;
+      }
+    }
+
+    // Adicionar opcionais de cera (apenas para serviços de lavagem)
+    bool hasWashingService = widget.services.any((service) {
+      final title = (service['title'] as String).toLowerCase();
+      return title.contains('lavagem') && !title.contains('leva e traz');
+    });
+
+    if (hasWashingService) {
+      if (_ceraCarnauba) total += 10.0;
+      if (_jetCera) total += 30.0;
+    }
+
+    return total;
+  }
+
+  bool _hasServicesWithPrice() {
+    for (final service in widget.services) {
+      final title = service['title'] as String;
+      if (_servicePrices.containsKey(title)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _hasWashingServices() {
+    return widget.services.any((service) {
+      final title = (service['title'] as String).toLowerCase();
+      return title.contains('lavagem') && !title.contains('leva e traz');
+    });
+  }
+
   Future<void> _initializeDateFormatting() async {
     await initializeDateFormatting('pt_BR', null);
     _dateFormat = DateFormat('dd/MM/yyyy', 'pt_BR');
@@ -97,7 +142,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _timeSlots.clear();
     final startTime = DateTime(2024, 1, 1, 8, 0);
     final endTime = DateTime(2024, 1, 1, 17, 0);
-    final step = const Duration(minutes: 30);
+    const step = Duration(minutes: 30);
     final block = Duration(minutes: _totalDurationMinutes);
 
     DateTime currentSlot = startTime;
@@ -302,52 +347,170 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         };
       }).toList();
 
+      // Adicionar opcionais selecionados
+      Map<String, dynamic>? optionalServices;
+      if (widget.services.any((service) {
+        final title = (service['title'] as String).toLowerCase();
+        return title.contains('lavagem') && !title.contains('leva e traz');
+      })) {
+        optionalServices = {
+          'ceraCarnauba': _ceraCarnauba,
+          'jetCera': _jetCera,
+        };
+      }
+
+      // Calcular valor total dos serviços incluindo opcionais
+      double totalAmount = _calculateTotalValue();
+
+      // Determinar status baseado no valor
+      String appointmentStatus = 'pending';
+      if (totalAmount == 0) {
+        appointmentStatus = 'no_payment';
+      }
+
       // Salvar agendamento único e obter o id
-      final docRef =
-          await FirebaseFirestore.instance.collection('appointments').add({
+      final appointmentData = {
         'userId': user.uid,
         'car': _selectedCar,
         'services': servicesToSave,
         'dateTime': dateTime,
         'duration': _totalDurationMinutes,
-        'status': 'pending',
+        'status': appointmentStatus,
+        'amount': totalAmount > 0 ? totalAmount : null,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
 
-      // Calcular valor total dos serviços
-      double totalAmount = 0;
-      for (final s in widget.services) {
-        final title = (s['title'] as String).toLowerCase();
-        if (title.contains('lavagem')) {
-          totalAmount += 50.0;
-        } else if (title == 'leva e traz') {
-          totalAmount += 30.0;
-        } else if (title == 'espelhamento') {
-          totalAmount += 120.0;
-        } else if (title == 'polimento') {
-          totalAmount += 150.0;
-        } else if (title == 'higienização') {
-          totalAmount += 100.0;
-        } else if (title == 'hidratação de couro') {
-          totalAmount += 180.0;
-        } else {
-          totalAmount += 100.0;
-        }
+      // Adicionar opcionais se existirem
+      if (optionalServices != null) {
+        appointmentData['optionalServices'] = optionalServices;
       }
 
+      final docRef = await FirebaseFirestore.instance
+          .collection('appointments')
+          .add(appointmentData);
+
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => PaymentScreen(
-              amount: totalAmount,
-              serviceTitle: _serviceTitles,
-              serviceDescription: 'Agendamento de $_serviceTitles',
-              carId: _selectedCar!['id'],
-              carModel: _selectedCar!['model'],
-              carPlate: _selectedCar!['plate'],
-              appointmentId: docRef.id,
+        // Mostrar tela de sucesso em vez de ir para pagamento
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.check_circle,
+                  color: Colors.green,
+                  size: 28,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Agendamento Realizado!',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Seu agendamento foi realizado com sucesso!',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[200]!),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Detalhes do Agendamento:',
+                          style: GoogleFonts.poppins(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          '• Serviços: $_serviceTitles',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                          overflow: TextOverflow.visible,
+                        ),
+                        Text(
+                          '• Data: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                        ),
+                        Text(
+                          '• Horário: $_selectedTime',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                        ),
+                        Text(
+                          '• Carro: ${_selectedCar!['model']} - ${_selectedCar!['plate']}',
+                          style: GoogleFonts.poppins(fontSize: 14),
+                          overflow: TextOverflow.visible,
+                        ),
+                        if (_hasServicesWithPrice()) ...[
+                          Text(
+                            '• Valor: R\$ ${totalAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                        ] else ...[
+                          Text(
+                            '• Valor: Preço a combinar',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Você receberá uma confirmação por email e poderá acompanhar o status do seu agendamento.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop(); // Fechar dialog
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          HomeScreen(authService: widget.authService),
+                    ),
+                    (route) => false, // Remove todas as rotas anteriores
+                  );
+                },
+                child: Text(
+                  'Voltar ao Início',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    color: _mainColor,
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       }
@@ -589,6 +752,135 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                         ],
                       ),
                     const SizedBox(height: 24),
+                    // Seção de opcionais (apenas para serviços de lavagem)
+                    if (_hasWashingServices()) ...[
+                      Text(
+                        'Opcionais',
+                        style: GoogleFonts.poppins(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Adicionais de Cera',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: _mainColor,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: _ceraCarnauba,
+                                    onChanged: (bool? value) {
+                                      setState(() {
+                                        _ceraCarnauba = value ?? false;
+                                      });
+                                    },
+                                    activeColor: _mainColor,
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Cera de Carnaúba',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          '+R\$ 10,00',
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  Checkbox(
+                                    value: _jetCera,
+                                    onChanged: (bool? value) {
+                                      setState(() {
+                                        _jetCera = value ?? false;
+                                      });
+                                    },
+                                    activeColor: _mainColor,
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Jet-Cera',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          '+R\$ 30,00',
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: _mainColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: _mainColor.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: _mainColor,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Você pode selecionar ambos os tipos de cera',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12,
+                                          color: _mainColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     Text(
                       'Data',
                       style: GoogleFonts.poppins(
@@ -688,6 +980,104 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           ),
                         );
                       },
+                    ),
+                    const SizedBox(height: 24),
+                    // Seção de valor total
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: _mainColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _mainColor.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (_hasServicesWithPrice()) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Valor Total',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  'R\$ ${_calculateTotalValue().toStringAsFixed(2).replaceAll('.', ',')}',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: _mainColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.orange[50],
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.orange[200]!),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Colors.orange[700],
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Preço será definido após avaliação do veículo - agendamento sem pagamento',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 14,
+                                        color: Colors.orange[700],
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          if (widget.services.any((service) {
+                            final title =
+                                (service['title'] as String).toLowerCase();
+                            return title.contains('lavagem') &&
+                                !title.contains('leva e traz');
+                          })) ...[
+                            if (_ceraCarnauba || _jetCera) ...[
+                              const SizedBox(height: 8),
+                              if (_ceraCarnauba)
+                                Text(
+                                  '• Cera de Carnaúba (+R\$ 10,00)',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: _mainColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              if (_ceraCarnauba && _jetCera)
+                                const SizedBox(height: 2),
+                              if (_jetCera)
+                                Text(
+                                  '• Jet-Cera (+R\$ 30,00)',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 12,
+                                    color: _mainColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                            ],
+                          ],
+                        ],
+                      ),
                     ),
                   ],
                 ),

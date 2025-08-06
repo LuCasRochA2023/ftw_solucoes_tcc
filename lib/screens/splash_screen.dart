@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 
 class SplashScreen extends StatefulWidget {
   final Widget? nextScreen;
@@ -99,45 +100,7 @@ class _SplashScreenState extends State<SplashScreen>
                     angle: _rotateAnimation.value * 3.14159,
                     child: Opacity(
                       opacity: _opacityAnimation.value,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 200,
-                            height: 200,
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.blue.withOpacity(0.3),
-                                  blurRadius: 20,
-                                  spreadRadius: 5,
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                'FTW',
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          Text(
-                            'Soluções Automotivas',
-                            style: GoogleFonts.poppins(
-                              color: Colors.black87,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
+                      child: const FTWLogo(size: 200, showShadow: true),
                     ),
                   ),
                 );

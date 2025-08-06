@@ -43,6 +43,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
   Map<String, dynamic>? _userData;
+
   StreamSubscription<User?>? _authStateSubscription;
   bool _isImageLoading = false;
   String? _cepError;
@@ -90,18 +91,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user != null) {
         final doc = await _firestore.collection('users').doc(user.uid).get();
         if (doc.exists) {
+          final userData = doc.data()!;
           setState(() {
-            _userData = doc.data();
-            _nameController.text = _userData?['name'] ?? '';
-            _cpfController.text = _userData?['cpf'] ?? '';
-            _phoneController.text = _userData?['phone'] ?? '';
-            _cepController.text = _userData?['cep'] ?? '';
-            _streetController.text = _userData?['street'] ?? '';
-            _numberController.text = _userData?['number'] ?? '';
-            _complementController.text = _userData?['complement'] ?? '';
-            _neighborhoodController.text = _userData?['neighborhood'] ?? '';
-            _cityController.text = _userData?['city'] ?? '';
-            _stateController.text = _userData?['state'] ?? '';
+            _userData = userData;
+            _nameController.text = userData['name'] ?? '';
+            _cpfController.text = userData['cpf'] ?? '';
+            _phoneController.text = userData['phone'] ?? '';
+
+            // Carregar dados do endereço que está salvo como campo direto no documento
+            final address = userData['address'] as Map<String, dynamic>?;
+            if (address != null) {
+              _cepController.text = address['cep'] ?? '';
+              _streetController.text = address['street'] ?? '';
+              _numberController.text = address['number'] ?? '';
+              _complementController.text = address['complement'] ?? '';
+              _neighborhoodController.text = address['neighborhood'] ?? '';
+              _cityController.text = address['city'] ?? '';
+              _stateController.text = address['state'] ?? '';
+            }
           });
         } else {
           await _firestore.collection('users').doc(user.uid).set({
@@ -175,13 +182,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _pickImage() async {
     try {
-      // Verify authentication state first
       final user = widget.authService.currentUser;
       if (user == null) {
         throw Exception('Usuário não autenticado');
       }
 
-      // Verify Firebase Storage instance
       if (_storage.app.options.projectId.isEmpty) {
         throw Exception('Firebase Storage não inicializado corretamente');
       }
@@ -200,14 +205,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
 
         try {
-          // Create a reference to the storage location
           final storageRef =
               _storage.ref().child('profile_photos/${user.uid}.jpg');
 
-          // Handle file upload differently for web and mobile
           UploadTask uploadTask;
           if (kIsWeb) {
-            // For web platform
             final bytes = await pickedFile.readAsBytes();
             final metadata = SettableMetadata(
               contentType: 'image/jpeg',
@@ -218,7 +220,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             );
             uploadTask = storageRef.putData(bytes, metadata);
           } else {
-            // For mobile platforms
             final file = File(pickedFile.path);
             final metadata = SettableMetadata(
               contentType: 'image/jpeg',
@@ -230,13 +231,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             uploadTask = storageRef.putFile(file, metadata);
           }
 
-          // Wait for the upload to complete
           final snapshot = await uploadTask;
 
-          // Get the download URL
           final downloadUrl = await snapshot.ref.getDownloadURL();
 
-          // Update the user's profile in Firestore
           await _firestore.collection('users').doc(user.uid).update({
             'photoUrl': downloadUrl,
             'lastPhotoUpdate': FieldValue.serverTimestamp(),
@@ -335,7 +333,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _onCepChanged(String value) {
-    // Limpar erro anterior
     setState(() {
       _cepError = null;
     });
@@ -378,9 +375,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'state': _stateController.text,
       };
 
-      // Verificar se todos os campos do endereço estão preenchidos
-      if (address.values.any((value) => value.isEmpty)) {
-        throw Exception('Por favor, preencha todos os campos do endereço');
+      // Verificar se todos os campos obrigatórios do endereço estão preenchidos
+      if (address['cep']!.isEmpty || 
+          address['street']!.isEmpty || 
+          address['number']!.isEmpty || 
+          address['neighborhood']!.isEmpty || 
+          address['city']!.isEmpty || 
+          address['state']!.isEmpty) {
+        throw Exception('Por favor, preencha todos os campos obrigatórios do endereço');
       }
 
       // Atualizar dados no Firestore
@@ -662,6 +664,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             labelText: 'CEP',
             hintText: '00000-000',
             errorText: _cepError,
+            border: const OutlineInputBorder(),
           ),
           keyboardType: TextInputType.number,
           inputFormatters: [

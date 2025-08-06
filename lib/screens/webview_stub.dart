@@ -6,12 +6,12 @@ class WebView extends StatelessWidget {
   final void Function(String)? onPageStarted;
   final void Function(String)? onPageFinished;
   const WebView(
-      {this.initialUrl,
+      {super.key, this.initialUrl,
       this.javascriptMode,
       this.onPageStarted,
       this.onPageFinished});
   @override
-  Widget build(BuildContext context) => SizedBox.shrink();
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 enum JavascriptMode {

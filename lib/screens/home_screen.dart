@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ftw_solucoes/screens/about_screen.dart';
 import 'package:ftw_solucoes/screens/login_screen.dart';
 import 'package:ftw_solucoes/screens/settings_screen.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
@@ -8,6 +9,7 @@ import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
+import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -299,31 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 24),
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2196F3),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
-                      blurRadius: 10,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    'FTW',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+              // Logo FTW Soluções Automotivas
+              const FTWLogo(),
               const SizedBox(height: 24),
               Text(
                 'Bem-vindo à FTW Soluções',
@@ -340,7 +319,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => SobreScreen(),
+                        builder: (context) => const SobreScreen(),
                       ),
                     );
                   },
@@ -354,8 +333,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       letterSpacing: 1.2,
                       shadows: [
                         Shadow(
-                          color: Colors.blue.withOpacity(0.2),
-                          offset: Offset(0, 2),
+                          color: Colors.blue
+                              .withValues(alpha: (255 * 0.5).toDouble()),
+                          offset: const Offset(0, 2),
                           blurRadius: 6,
                         ),
                       ],
@@ -399,7 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => ServiceHistoryScreen(),
+                      builder: (context) => const ServiceHistoryScreen(),
                     ),
                   );
                 },
@@ -424,99 +404,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> _fetchAppointments() async {
-    final user = widget.authService.currentUser;
-    if (user == null) return [];
-    final querySnapshot = await FirebaseFirestore.instance
-        .collection('appointments')
-        .where('userId', isEqualTo: user.uid)
-        .get();
-    final appointments = querySnapshot.docs.map((doc) {
-      final data = doc.data();
-      data['id'] = doc.id;
-      return data;
-    }).toList();
-    appointments.sort((a, b) {
-      final dateA = (a['dateTime'] as Timestamp).toDate();
-      final dateB = (b['dateTime'] as Timestamp).toDate();
-      return dateB.compareTo(dateA);
-    });
-    return appointments;
-  }
-
-  String _getServiceDuration(String service) {
-    // Exemplo de tempos para cada serviço
-    switch (service.toLowerCase()) {
-      case 'lavagem suv':
-      case 'lavagem carro comum':
-        return '1h';
-      case 'lavagem caminhonete':
-        return '1h 30min';
-      case 'leva e traz':
-        return '30min';
-      case 'espelhamento':
-        return '2h';
-      case 'polimento':
-        return '2h';
-      case 'higienização':
-        return '1h 30min';
-      case 'hidratação de couro':
-        return '1h';
-      case 'enceramento':
-        return '1h';
-      case 'cristalização de faróis':
-        return '40min';
-      case 'remoção de chuva ácida':
-        return '1h';
-      case 'lavagem do motor':
-        return '40min';
-      case 'revitalização de para-choques e plásticos':
-        return '50min';
-      case 'higienização interna com extratora':
-        return '1h 20min';
-      case 'micropintura':
-        return '1h';
-      case 'lavagem por baixo do veículo':
-        return '1h';
-      default:
-        return '1h';
-    }
-  }
-}
-
-class SobreScreen extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Sobre a FTW', style: GoogleFonts.poppins()),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Apresentação Institucional – FTW Soluções Automotivas',
-              style: GoogleFonts.poppins(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Desde 2013, a FTW Soluções Automotivas atua com excelência no segmento de lavagem e estética automotiva em Porto Alegre, oferecendo serviços de alta qualidade para um público exigente e apaixonado por carros.\n'
-              'Nossa missão é entregar não apenas veículos limpos, mas experiências marcantes, através de um cuidado minucioso com cada detalhe. Trabalhamos com produtos de primeira linha e técnicas especializadas, garantindo um resultado superior e duradouro.\n'
-              'Com mais de uma década de história, construímos uma reputação sólida baseada na confiança, no comprometimento e no padrão de qualidade FTW, que pode ser visto no brilho de cada carro que passa por nossas mãos.\n'
-              'Seja para proteger, restaurar ou simplesmente valorizar a aparência do seu veículo, a FTW é a escolha certa para quem trata o carro como uma verdadeira paixão.',
-              style: GoogleFonts.poppins(fontSize: 16),
-            ),
-          ],
         ),
       ),
     );

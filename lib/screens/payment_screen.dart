@@ -11,7 +11,6 @@ import 'package:flutter/services.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../utils/backend_url.dart';
-import 'package:flutter/services.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -45,6 +44,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _paymentId;
   Timer? _statusTimer;
   int _selectedTab = 0; // 0 = Pix, 1 = Cartão
+  bool _isInitialized = false; // Flag para evitar inicialização duplicada
 
   // Campos do formulário de cartão
   final _cardNumberController = TextEditingController();
@@ -76,9 +76,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    _criarPagamentoPix();
-    _loadUserCpf();
     print('=== DEBUG: PaymentScreen initState ===');
+    // Inicializar imediatamente sem delay
+    _initializePayment();
+  }
+
+  Future<void> _initializePayment() async {
+    if (_isInitialized) {
+      print('=== DEBUG: Pagamento já inicializado, pulando... ===');
+      return;
+    }
+
+    print('=== DEBUG: Inicializando pagamento ===');
+    _isInitialized = true;
+
+    // Executar carregamento de CPF e criação de pagamento em paralelo
+    await Future.wait([
+      _loadUserCpf(),
+      _criarPagamentoPix(),
+    ]);
+    print('=== DEBUG: Inicialização concluída ===');
   }
 
   @override
@@ -97,103 +114,135 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         print('Usuário autenticado: ${user.uid}');
+
+        // Usar timeout mais curto para carregamento mais rápido
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 5));
 
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
           print('Dados do usuário: $data');
           final cpf = data['cpf'] ?? '';
-          setState(() {
-            _userCpf = cpf;
-          });
-          print('CPF carregado do perfil: $cpf');
-          print('CPF limpo: ${cpf.replaceAll(RegExp(r'[^\d]'), '')}');
-          print('CPF armazenado em _userCpf: $_userCpf');
+
+          if (cpf.isNotEmpty) {
+            setState(() {
+              _userCpf = cpf;
+            });
+            print('✅ CPF carregado do perfil: $cpf');
+            print('✅ CPF limpo: ${cpf.replaceAll(RegExp(r'[^\d]'), '')}');
+            print('✅ CPF armazenado em _userCpf: $_userCpf');
+          } else {
+            print('⚠️ CPF não encontrado no perfil do usuário');
+            setState(() {
+              _userCpf = null;
+            });
+          }
         } else {
-          print('Documento do usuário não encontrado');
+          print('⚠️ Documento do usuário não encontrado');
+          setState(() {
+            _userCpf = null;
+          });
         }
       } else {
-        print('Usuário não autenticado');
+        print('❌ Usuário não autenticado');
+        setState(() {
+          _userCpf = null;
+        });
       }
     } catch (e) {
-      print('Erro ao carregar CPF do usuário: $e');
+      print('❌ Erro ao carregar CPF do usuário: $e');
+      setState(() {
+        _userCpf = null;
+      });
     }
   }
 
   Future<void> _criarPagamentoPix() async {
+    if (_isProcessing) {
+      print('=== DEBUG: Pagamento PIX já em processamento, pulando... ===');
+      return;
+    }
+
+    print('=== DEBUG: Definindo _isProcessing como true ===');
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
-    try {
-      print('=== DEBUG: Iniciando requisição para criar pagamento PIX ===');
-      print('URL: ${BackendUrl.baseUrl}/create-payment');
 
-      // Teste de conectividade primeiro
-      try {
-        final testResponse = await http.get(
-          Uri.parse('${BackendUrl.baseUrl}'),
-          headers: {'Content-Type': 'application/json'},
-        ).timeout(const Duration(seconds: 5));
-        print('✅ Backend está acessível. Status: ${testResponse.statusCode}');
-      } catch (e) {
-        print('❌ Erro de conectividade com o backend: $e');
-        setState(() {
-          _errorMessage =
-              'Erro de conexão com o backend. Verifique se o servidor está rodando na porta 3001.';
-        });
-        return;
+    // Aguardar um pouco para o CPF carregar se necessário
+    if (_userCpf == null) {
+      print('=== DEBUG: Aguardando carregamento do CPF... ===');
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    try {
+      print('=== DEBUG: Iniciando criação de pagamento PIX ===');
+      print('URL: ${BackendUrl.baseUrl}/create-payment');
+      print('CPF atual: $_userCpf');
+
+      // Usar dados do usuário logado se disponível
+      final user = FirebaseAuth.instance.currentUser;
+      String userEmail = 'usuario@email.com';
+      String userFirstName = 'Nome';
+      String userLastName = 'Sobrenome';
+      String userCpf = '12345678909'; // CPF válido para teste
+
+      if (user != null) {
+        userEmail = user.email ?? userEmail;
+        if (user.displayName != null) {
+          final nameParts = user.displayName!.split(' ');
+          userFirstName = nameParts.first;
+          userLastName = nameParts.skip(1).join(' ');
+        }
       }
 
-      // Teste de configuração do Mercado Pago
-      try {
-        final configResponse = await http.get(
-          Uri.parse('${BackendUrl.baseUrl}/config-test'),
-          headers: {'Content-Type': 'application/json'},
-        ).timeout(const Duration(seconds: 5));
-
-        if (configResponse.statusCode != 200) {
-          print('⚠️ Configuração do Mercado Pago pode estar incompleta');
+      // Verificar se temos CPF do perfil do usuário
+      if (_userCpf != null && _userCpf!.isNotEmpty) {
+        final cleanCpf = _userCpf!.replaceAll(RegExp(r'[^\d]'), '');
+        if (cleanCpf.length == 11) {
+          userCpf = cleanCpf;
+          print('✅ Usando CPF do perfil: $userCpf');
         } else {
-          print('✅ Configuração do Mercado Pago verificada');
+          print('⚠️ CPF do perfil inválido: $_userCpf (limpo: $cleanCpf)');
+          print('⚠️ Usando CPF de teste: $userCpf');
         }
-      } catch (e) {
-        print(
-            '⚠️ Não foi possível verificar a configuração do Mercado Pago: $e');
+      } else {
+        print('⚠️ CPF não encontrado no perfil, usando CPF de teste: $userCpf');
+        print('💡 Dica: Atualize seu perfil para usar seu CPF real');
       }
 
       final headers = {
         'Content-Type': 'application/json',
         'x-idempotency-key': const Uuid().v4(),
       };
-      print('Headers: ${jsonEncode(headers)}');
 
       final requestBody = {
         'amount': widget.amount,
         'description': widget.serviceDescription,
         'payer': {
-          'email': 'usuario@email.com',
-          'firstName': 'Nome',
-          'lastName': 'Sobrenome',
-          'cpf': '12345678909',
+          'email': userEmail,
+          'firstName': userFirstName,
+          'lastName': userLastName,
+          'cpf': userCpf,
         }
       };
       print('Body: ${jsonEncode(requestBody)}');
 
+      print('=== DEBUG: Enviando requisição para o backend ===');
       final response = await http
           .post(
             Uri.parse('${BackendUrl.baseUrl}/create-payment'),
             headers: headers,
             body: jsonEncode(requestBody),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(
+              const Duration(seconds: 15)); // Reduzir timeout para 15 segundos
 
       print('=== DEBUG: Resposta recebida ===');
       print('Status Code: ${response.statusCode}');
-      print('Response Headers: ${response.headers}');
       print('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
@@ -203,29 +252,27 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final qr =
             data['point_of_interaction']?['transaction_data']?['qr_code'];
         print('QR recebido: $qr');
-        setState(() {
-          _pixQrCode = qr;
-          _paymentId = data['id'].toString();
-        });
-        _startStatusPolling();
+
+        if (qr != null && qr.isNotEmpty) {
+          print('=== DEBUG: Definindo _isProcessing como false (sucesso) ===');
+          setState(() {
+            _pixQrCode = qr;
+            _paymentId = data['id'].toString();
+            _isProcessing = false;
+          });
+          _startStatusPolling();
+          print('✅ QR Code gerado com sucesso!');
+        } else {
+          throw Exception('QR Code não foi gerado pelo backend');
+        }
       } else {
         final errorData = jsonDecode(response.body);
         String errorMessage = 'Erro ao criar pagamento';
 
-        // Handle specific Mercado Pago errors
         if (errorData['error'] != null) {
           if (errorData['error']['message'] != null) {
-            final message = errorData['error']['message'] as String;
-            if (message
-                .contains('Collector user without key enabled for QR render')) {
-              errorMessage =
-                  'Erro de configuração: Conta do Mercado Pago não tem permissões para gerar QR Code. Verifique as configurações da conta.';
-            } else if (message.contains('bad_request')) {
-              errorMessage =
-                  'Erro de configuração do pagamento. Verifique os dados enviados.';
-            } else {
-              errorMessage = 'Erro do Mercado Pago: $message';
-            }
+            errorMessage =
+                'Erro do Mercado Pago: ${errorData['error']['message']}';
           } else if (errorData['error']['error'] != null) {
             errorMessage = 'Erro: ${errorData['error']['error']}';
           }
@@ -233,21 +280,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
           errorMessage = 'Erro ao criar pagamento: ${response.body}';
         }
 
+        print('=== DEBUG: Definindo _isProcessing como false (erro) ===');
         setState(() {
           _errorMessage = errorMessage;
+          _isProcessing = false;
         });
+
+        // Adicionar botão de retry para erros
+        _showRetryButton();
       }
     } catch (e) {
       print('=== DEBUG: Erro na requisição ===');
       print('Erro: $e');
+      print('=== DEBUG: Definindo _isProcessing como false (exceção) ===');
       setState(() {
         _errorMessage = 'Erro ao criar pagamento: $e';
-      });
-    } finally {
-      setState(() {
         _isProcessing = false;
       });
+
+      // Adicionar botão de retry para exceções
+      _showRetryButton();
     }
+  }
+
+  void _showRetryButton() {
+    // Função para mostrar botão de retry quando há erro
+    // Será implementada na UI
   }
 
   void _startStatusPolling() {
@@ -601,209 +659,462 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildPixWidget() {
+    print(
+        '=== DEBUG: _buildPixWidget chamado - _isProcessing: $_isProcessing ===');
+
     return SingleChildScrollView(
-        child: Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Text('Escaneie o QR Code Pix para pagar:',
-                style: TextStyle(fontSize: 18)),
-            const SizedBox(height: 24),
-            if (_pixQrCode != null && _pixQrCode!.isNotEmpty)
-              Container(
-                constraints: const BoxConstraints(maxWidth: 300),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withValues(alpha: 0.3),
-                      spreadRadius: 2,
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    QrImageView(
-                      data: _pixQrCode!,
-                      size: 180.0,
-                      backgroundColor: Colors.white,
-                      dataModuleStyle: QrDataModuleStyle(
-                        dataModuleShape: QrDataModuleShape.square,
-                        color: Colors.black,
+              ),
+              const SizedBox(height: 16),
+
+              // APENAS UMA MENSAGEM DE CARREGAMENTO
+              if (_isProcessing) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  margin: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      const CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                       ),
-                      eyeStyle: QrEyeStyle(
-                        eyeShape: QrEyeShape.square,
-                        color: Colors.black,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Escaneie o QR Code acima',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _copyQrCodeToClipboard,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Gerando QR Code PIX...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green[700],
                         ),
                       ),
-                      icon: const Icon(Icons.copy, size: 18),
-                      label: const Text(
-                        'Copiar Código PIX',
-                        style: TextStyle(fontSize: 14),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Isso pode levar alguns segundos',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.green[600],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              )
-            else if (_isProcessing)
-              const Column(
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Gerando QR Code...'),
-                ],
-              )
-            else
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange),
-                ),
-                child: const Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Colors.orange,
-                      size: 48,
+              ] else ...[
+                // Indicador do CPF sendo usado - APENAS QUANDO NÃO ESTÁ PROCESSANDO
+                if (_userCpf != null && _userCpf!.isNotEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green[200]!),
                     ),
-                    SizedBox(height: 8),
-                    Text(
-                      'QR Code não recebido',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.orange,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Verifique se o backend está rodando',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.orange,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 24),
-            const SizedBox(height: 16),
-            const Text('Após o pagamento, a confirmação é automática.',
-                style: TextStyle(color: Colors.green)),
-            const SizedBox(height: 24),
-            if (_errorMessage != null)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.red),
-                ),
-                child: Column(
-                  children: [
-                    Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.error_outline, color: Colors.red[600]),
+                        Icon(
+                          Icons.check_circle,
+                          color: Colors.green[600],
+                          size: 20,
+                        ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'Erro de Configuração',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                            fontSize: 16,
+                        Expanded(
+                          child: Text(
+                            'Usando CPF do perfil: ${_userCpf!.replaceAll(RegExp(r'[^\d]'), '').replaceAllMapped(RegExp(r'(\d{3})(\d{3})(\d{3})(\d{2})'), (Match m) => '${m[1]}.${m[2]}.${m[3]}-${m[4]}')}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.green[700],
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _errorMessage!,
-                      style: const TextStyle(color: Colors.red),
-                      textAlign: TextAlign.center,
+                  ),
+
+                // Aviso se CPF não encontrado
+                if (_userCpf == null || _userCpf!.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange[200]!),
                     ),
-                    const SizedBox(height: 12),
-                    if (_errorMessage!.contains('Mercado Pago'))
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange),
-                        ),
-                        child: Column(
+                    child: Column(
+                      children: [
+                        Row(
                           children: [
-                            const Text(
-                              'Soluções:',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.orange,
-                              ),
+                            Icon(
+                              Icons.info_outline,
+                              color: Colors.orange[600],
+                              size: 20,
                             ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              '• Verifique se a conta do Mercado Pago está configurada corretamente\n'
-                              '• Certifique-se de que as chaves de API estão habilitadas\n'
-                              '• Tente usar pagamento com cartão como alternativa',
-                              style: TextStyle(
-                                color: Colors.orange,
-                                fontSize: 12,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'CPF não encontrado no perfil. Atualize seu perfil para usar seu CPF real.',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.orange[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                              textAlign: TextAlign.left,
                             ),
                           ],
                         ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ProfileScreen(
+                                        authService: AuthService()),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.person),
+                              label: const Text('Ir ao Perfil'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange[600],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                _criarPagamentoPix();
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Tentar PIX'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green[600],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+
+              // Mensagem de erro
+              if (_errorMessage != null && !_isProcessing)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.symmetric(vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.red[600],
+                        size: 32,
                       ),
-                  ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Erro ao gerar PIX',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red[700],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.red[600],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _errorMessage = null;
+                                _pixQrCode = null;
+                              });
+                              _criarPagamentoPix();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tentar Novamente'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _selectedTab = 1; // Mudar para cartão
+                              });
+                            },
+                            icon: const Icon(Icons.credit_card),
+                            label: const Text('Usar Cartão'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
+
+              // QR Code
+              if (_pixQrCode != null &&
+                  _pixQrCode!.isNotEmpty &&
+                  !_isProcessing)
+                Container(
+                  constraints: const BoxConstraints(maxWidth: 300),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withValues(alpha: 0.3),
+                        spreadRadius: 2,
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      QrImageView(
+                        data: _pixQrCode!,
+                        size: 180.0,
+                        backgroundColor: Colors.white,
+                        dataModuleStyle: const QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: Colors.black,
+                        ),
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Escaneie o QR Code acima',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _copyQrCodeToClipboard,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: const Icon(Icons.copy, size: 18),
+                        label: const Text(
+                          'Copiar Código PIX',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_pixQrCode == null && !_isProcessing)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.orange),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        color: Colors.orange,
+                        size: 48,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'QR Code não recebido',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Verifique se o backend está rodando',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 24),
+              const SizedBox(height: 16),
+              const Text('Após o pagamento, a confirmação é automática.',
+                  style: TextStyle(color: Colors.green)),
+              const SizedBox(height: 24),
+              if (_errorMessage != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.red[50],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.red[600]),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Erro ao Gerar PIX',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _errorMessage!,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      // Botão de retry mais proeminente
+                      ElevatedButton.icon(
+                        onPressed: _isProcessing
+                            ? null
+                            : () {
+                                setState(() {
+                                  _errorMessage = null;
+                                  _isProcessing = false;
+                                });
+                                _criarPagamentoPix();
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: _isProcessing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                        label: Text(
+                          _isProcessing ? 'Tentando...' : 'Tentar Novamente',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (_errorMessage!.contains('Mercado Pago'))
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange),
+                          ),
+                          child: const Column(
+                            children: [
+                              Text(
+                                'Soluções:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                '• Verifique se a conta do Mercado Pago está configurada corretamente\n'
+                                '• Certifique-se de que as chaves de API estão habilitadas\n'
+                                '• Tente usar pagamento com cartão como alternativa',
+                                style: TextStyle(
+                                  color: Colors.orange,
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.left,
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+              if (_errorMessage != null &&
+                  _errorMessage!.contains('Mercado Pago'))
                 ElevatedButton.icon(
-                  onPressed: _isProcessing ? null : _criarPagamentoPix,
+                  onPressed: () => setState(() => _selectedTab = 1),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
+                    backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
@@ -811,47 +1122,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  icon: _isProcessing
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Icon(Icons.refresh),
-                  label: Text(
-                    _isProcessing ? 'Gerando...' : 'Tentar Novamente',
-                    style: const TextStyle(fontSize: 16),
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text(
+                    'Usar Cartão',
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
-                if (_errorMessage != null &&
-                    _errorMessage!.contains('Mercado Pago'))
-                  ElevatedButton.icon(
-                    onPressed: () => setState(() => _selectedTab = 1),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(Icons.credit_card),
-                    label: const Text(
-                      'Usar Cartão',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ));
+    );
   }
 
   Widget _buildCreditCardWidget() {
@@ -1147,7 +1428,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               });
                               return;
                             }
-                            print('CPF antes da tokenização: ${_userCpf}');
+                            print('CPF antes da tokenização: $_userCpf');
                             print(
                                 'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
                             print(
@@ -1371,7 +1652,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               'Pagamento em processamento. Aguarde a confirmação. Status: $statusDetail';
         });
         // Aguardar um pouco e verificar novamente
-        await Future.delayed(Duration(seconds: 3));
+        await Future.delayed(const Duration(seconds: 3));
         await _checkPaymentStatus(data['id'].toString());
       } else if (status == 'rejected') {
         print('❌ Pagamento rejeitado');
@@ -1427,7 +1708,7 @@ class _ExpiryDateInputFormatter extends TextInputFormatter {
       TextEditingValue oldValue, TextEditingValue newValue) {
     var text = newValue.text.replaceAll(RegExp(r'\D'), '');
     if (text.length > 2) {
-      text = text.substring(0, 2) + '/' + text.substring(2, text.length);
+      text = '${text.substring(0, 2)}/${text.substring(2, text.length)}';
     }
     if (text.length > 5) text = text.substring(0, 5);
     return TextEditingValue(
