@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:ftw_solucoes/screens/register_screen.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
+import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _isResettingPassword = false;
 
   @override
   void dispose() {
@@ -54,6 +56,57 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handlePasswordReset() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, insira seu email para recuperar a senha'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor, insira um email válido'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isResettingPassword = true);
+
+    try {
+      await widget.authService.sendPasswordResetEmail(email);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Email de recuperação enviado! Verifique sua caixa de entrada ou lixo eletrônico'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao enviar email: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isResettingPassword = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,30 +120,9 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: const Color.fromRGBO(33, 150, 243, 1),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue.withOpacity(0.3),
-                          blurRadius: 10,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Center(
-                      child: Text(
-                        'FTW',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
+                  const FTWLogo(
+                    size: 120,
+                    showShadow: true,
                   ),
                   const SizedBox(height: 40),
 
@@ -211,6 +243,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                       return null;
                     },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Esqueci minha senha
+                  Center(
+                    child: TextButton(
+                      onPressed:
+                          _isResettingPassword ? null : _handlePasswordReset,
+                      child: _isResettingPassword
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : Text(
+                              'Esqueci minha senha',
+                              style: GoogleFonts.poppins(
+                                color: Colors.blue,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                    ),
                   ),
                   const SizedBox(height: 24),
 

@@ -238,8 +238,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             headers: headers,
             body: jsonEncode(requestBody),
           )
-          .timeout(
-              const Duration(seconds: 15)); // Reduzir timeout para 15 segundos
+          .timeout(const Duration(
+              seconds:
+                  10)); // Reduzir timeout para 10 segundos para ser mais rápido
 
       print('=== DEBUG: Resposta recebida ===');
       print('Status Code: ${response.statusCode}');
@@ -268,21 +269,50 @@ class _PaymentScreenState extends State<PaymentScreen> {
       } else {
         final errorData = jsonDecode(response.body);
         String errorMessage = 'Erro ao criar pagamento';
+        String userFriendlyMessage = 'Não foi possível processar o pagamento';
 
-        if (errorData['error'] != null) {
+        // Tratamento específico de erros com mensagens amigáveis
+        if (errorData['message'] != null) {
+          userFriendlyMessage = errorData['message'];
+        } else if (errorData['error'] != null) {
           if (errorData['error']['message'] != null) {
-            errorMessage =
-                'Erro do Mercado Pago: ${errorData['error']['message']}';
+            userFriendlyMessage = errorData['error']['message'];
           } else if (errorData['error']['error'] != null) {
-            errorMessage = 'Erro: ${errorData['error']['error']}';
+            userFriendlyMessage = 'Erro: ${errorData['error']['error']}';
           }
-        } else {
-          errorMessage = 'Erro ao criar pagamento: ${response.body}';
+        }
+
+        // Mapeamento de códigos de status para mensagens amigáveis
+        switch (response.statusCode) {
+          case 400:
+            if (userFriendlyMessage.contains('QR Code')) {
+              userFriendlyMessage =
+                  'Não foi possível gerar o QR Code PIX. Verifique se a conta está configurada corretamente.';
+            } else if (userFriendlyMessage.contains('BIN')) {
+              userFriendlyMessage =
+                  'Dados do cartão inválidos. Verifique o número, data de validade e CVV.';
+            }
+            break;
+          case 401:
+            userFriendlyMessage =
+                'Erro de autenticação. Entre em contato com o suporte.';
+            break;
+          case 408:
+            userFriendlyMessage =
+                'A requisição demorou muito para responder. Tente novamente.';
+            break;
+          case 503:
+            userFriendlyMessage =
+                'Serviço temporariamente indisponível. Tente novamente em alguns instantes.';
+            break;
+          default:
+            userFriendlyMessage =
+                'Erro inesperado. Tente novamente ou entre em contato com o suporte.';
         }
 
         print('=== DEBUG: Definindo _isProcessing como false (erro) ===');
         setState(() {
-          _errorMessage = errorMessage;
+          _errorMessage = userFriendlyMessage;
           _isProcessing = false;
         });
 
@@ -293,8 +323,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
       print('=== DEBUG: Erro na requisição ===');
       print('Erro: $e');
       print('=== DEBUG: Definindo _isProcessing como false (exceção) ===');
+
+      String userFriendlyMessage = 'Erro inesperado. Tente novamente.';
+
+      // Tratamento específico de exceções
+      if (e.toString().contains('TimeoutException')) {
+        userFriendlyMessage =
+            'A requisição demorou muito para responder. Verifique sua conexão com a internet e tente novamente.';
+      } else if (e.toString().contains('SocketException')) {
+        userFriendlyMessage =
+            'Não foi possível conectar com o servidor. Verifique sua conexão com a internet.';
+      } else if (e.toString().contains('HandshakeException')) {
+        userFriendlyMessage =
+            'Erro de conexão segura. Verifique sua conexão com a internet.';
+      } else if (e.toString().contains('QR Code não foi gerado')) {
+        userFriendlyMessage =
+            'Não foi possível gerar o QR Code PIX. Tente novamente ou entre em contato com o suporte.';
+      }
+
       setState(() {
-        _errorMessage = 'Erro ao criar pagamento: $e';
+        _errorMessage = userFriendlyMessage;
         _isProcessing = false;
       });
 
@@ -305,21 +353,61 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void _showRetryButton() {
     // Função para mostrar botão de retry quando há erro
-    // Será implementada na UI
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.refresh, color: Colors.white),
+              const SizedBox(width: 8),
+              const Text('Erro no pagamento. Toque para tentar novamente.'),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'Tentar',
+            textColor: Colors.white,
+            onPressed: () {
+              _criarPagamentoPix();
+            },
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 10),
+        ),
+      );
+    }
   }
 
   void _startStatusPolling() {
     _statusTimer?.cancel();
     if (_paymentId == null) return;
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-      final status = await _consultarStatusPagamento();
-      if (status == 'approved') {
-        _statusTimer?.cancel();
-        if (mounted) {
-          await _onPaymentSuccess();
-        }
-      }
+
+    // Primeira verificação imediata
+    _checkPixPaymentStatus();
+
+    // Polling a cada 2 segundos (mais rápido)
+    _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _checkPixPaymentStatus();
     });
+  }
+
+  Future<void> _checkPixPaymentStatus() async {
+    if (_paymentId == null) return;
+
+    final status = await _consultarStatusPagamento();
+    if (status == 'approved') {
+      _statusTimer?.cancel();
+      if (mounted) {
+        await _onPaymentSuccess();
+      }
+    } else if (status == 'rejected' || status == 'cancelled') {
+      _statusTimer?.cancel();
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Pagamento foi rejeitado ou cancelado.';
+          _isProcessing = false;
+        });
+      }
+    }
   }
 
   Future<String?> _consultarStatusPagamento() async {
@@ -767,7 +855,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           children: [
                             Icon(
                               Icons.info_outline,
-                              color: Colors.orange[600],
+                              color: Colors.orange,
                               size: 20,
                             ),
                             const SizedBox(width: 8),
@@ -983,7 +1071,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        'QR Code não recebido',
+                        'QR Code não foi gerado',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -992,7 +1080,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Verifique se o backend está rodando',
+                        'Tente novamente ou entre em contato com o suporte',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.orange,

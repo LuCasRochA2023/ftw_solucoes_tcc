@@ -97,7 +97,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
             children: [
               Icon(
                 Icons.info_outline,
-                color: Theme.of(context).primaryColor,
+                color: Colors.orange,
                 size: 24,
               ),
               const SizedBox(width: 8),
@@ -148,7 +148,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            'Informações Adicionais',
+                            'Detalhes',
                             style: GoogleFonts.poppins(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -233,8 +233,6 @@ class _ServicesScreenState extends State<ServicesScreen> {
         return '• Duração média: 1-2 horas\n• Nutrição do couro\n• Prevenção de rachaduras\n• Restauração da maciez\n• Proteção contra desgaste';
       case 'leva e traz':
         return '• Serviço de conveniência\n• Busca e entrega no local\n• Horário flexível\n• Economia de tempo\n• Segurança garantida';
-      case 'lavagem caminhonete':
-        return '• Duração média: 1-1.5 horas\n• Lavagem completa externa e interna\n• Produtos específicos para caminhonetes\n• Limpeza de caçamba\n• Secagem profissional';
       default:
         return '• Serviço personalizado\n• Qualidade garantida\n• Profissionais experientes\n• Satisfação do cliente\n• Garantia de qualidade';
     }
@@ -261,17 +259,17 @@ class _ServicesScreenState extends State<ServicesScreen> {
                         color: Colors.grey[400],
                       ),
                       const SizedBox(height: 16),
-                      Text(
+                      const Text(
                         'Nenhum serviço encontrado',
-                        style: GoogleFonts.poppins(
+                        style: TextStyle(
                           fontSize: 16,
-                          color: Colors.grey[600],
+                          color: Colors.grey,
                         ),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'DEBUG: _services.length = ${_services.length}',
-                        style: TextStyle(color: Colors.red, fontSize: 12),
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
                       ),
                     ],
                   ),
@@ -315,10 +313,10 @@ class _ServicesScreenState extends State<ServicesScreen> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: Colors.red, width: 3),
                             ),
-                            child: Center(
+                            child: const Center(
                               child: Icon(
                                 Icons.info_outline,
-                                color: Colors.white,
+                                color: Colors.orange,
                                 size: 30,
                               ),
                             ),

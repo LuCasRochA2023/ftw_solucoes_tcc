@@ -31,9 +31,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
 
-  // Variáveis para opcionais de cera
-  bool _ceraCarnauba = false;
-  bool _jetCera = false;
+  // Variável para opcional de cera (apenas uma seleção)
+  String? _selectedCera;
 
   final List<String> _timeSlots = [];
   late DateFormat _dateFormat;
@@ -82,7 +81,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     int total = 0;
     for (final s in services) {
       final title = (s['title'] as String).toLowerCase();
-      if (title.contains('lavagem')) {
+      if (title.contains('lavagem suv') ||
+          title.contains('lavagem carro comum') ||
+          title.contains('lavagem caminhonete')) {
         total += 60;
       } else {
         total += 120;
@@ -102,15 +103,18 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       }
     }
 
-    // Adicionar opcionais de cera (apenas para serviços de lavagem)
+    // Adicionar opcional de cera (apenas para serviços de lavagem)
     bool hasWashingService = widget.services.any((service) {
       final title = (service['title'] as String).toLowerCase();
-      return title.contains('lavagem') && !title.contains('leva e traz');
+      return (title.contains('lavagem suv') ||
+              title.contains('lavagem carro comum') ||
+              title.contains('lavagem caminhonete')) &&
+          !title.contains('leva e traz');
     });
 
-    if (hasWashingService) {
-      if (_ceraCarnauba) total += 10.0;
-      if (_jetCera) total += 30.0;
+    if (hasWashingService && _selectedCera != null) {
+      if (_selectedCera == 'carnauba') total += 30.0; // Preço invertido
+      if (_selectedCera == 'jetcera') total += 10.0; // Preço invertido
     }
 
     return total;
@@ -129,7 +133,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   bool _hasWashingServices() {
     return widget.services.any((service) {
       final title = (service['title'] as String).toLowerCase();
-      return title.contains('lavagem') && !title.contains('leva e traz');
+      return (title.contains('lavagem suv') ||
+              title.contains('lavagem carro comum') ||
+              title.contains('lavagem caminhonete')) &&
+          !title.contains('leva e traz');
     });
   }
 
@@ -351,11 +358,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       Map<String, dynamic>? optionalServices;
       if (widget.services.any((service) {
         final title = (service['title'] as String).toLowerCase();
-        return title.contains('lavagem') && !title.contains('leva e traz');
+        return (title.contains('lavagem suv') ||
+                title.contains('lavagem carro comum') ||
+                title.contains('lavagem caminhonete')) &&
+            !title.contains('leva e traz');
       })) {
         optionalServices = {
-          'ceraCarnauba': _ceraCarnauba,
-          'jetCera': _jetCera,
+          'selectedCera': _selectedCera,
         };
       }
 
@@ -399,7 +408,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               builder: (context) => PaymentScreen(
                 amount: totalAmount,
                 serviceTitle: _serviceTitles,
-                serviceDescription: widget.services.map((s) => s['description'] as String).join(', '),
+                serviceDescription: widget.services
+                    .map((s) => s['description'] as String)
+                    .join(', '),
                 carId: _selectedCar!['id'],
                 carModel: _selectedCar!['model'],
                 carPlate: _selectedCar!['plate'],
@@ -791,11 +802,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  Checkbox(
-                                    value: _ceraCarnauba,
-                                    onChanged: (bool? value) {
+                                  Radio<String>(
+                                    value: 'carnauba',
+                                    groupValue: _selectedCera,
+                                    onChanged: (String? value) {
                                       setState(() {
-                                        _ceraCarnauba = value ?? false;
+                                        _selectedCera = value;
                                       });
                                     },
                                     activeColor: _mainColor,
@@ -812,7 +824,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '+R\$ 10,00',
+                                          '+R\$ 30,00',
                                           style: GoogleFonts.poppins(
                                             color: Colors.grey[600],
                                             fontSize: 12,
@@ -825,11 +837,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               ),
                               Row(
                                 children: [
-                                  Checkbox(
-                                    value: _jetCera,
-                                    onChanged: (bool? value) {
+                                  Radio<String>(
+                                    value: 'jetcera',
+                                    groupValue: _selectedCera,
+                                    onChanged: (String? value) {
                                       setState(() {
-                                        _jetCera = value ?? false;
+                                        _selectedCera = value;
                                       });
                                     },
                                     activeColor: _mainColor,
@@ -846,7 +859,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '+R\$ 30,00',
+                                          '+R\$ 10,00',
                                           style: GoogleFonts.poppins(
                                             color: Colors.grey[600],
                                             fontSize: 12,
@@ -871,13 +884,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                   children: [
                                     Icon(
                                       Icons.info_outline,
-                                      color: _mainColor,
+                                      color: Colors.orange,
                                       size: 20,
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        'Você pode selecionar ambos os tipos de cera',
+                                        'Selecione apenas um tipo de cera',
                                         style: GoogleFonts.poppins(
                                           fontSize: 12,
                                           color: _mainColor,
@@ -1040,7 +1053,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 children: [
                                   Icon(
                                     Icons.info_outline,
-                                    color: Colors.orange[700],
+                                    color: Colors.orange,
                                     size: 20,
                                   ),
                                   const SizedBox(width: 12),
@@ -1061,31 +1074,23 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           if (widget.services.any((service) {
                             final title =
                                 (service['title'] as String).toLowerCase();
-                            return title.contains('lavagem') &&
+                            return (title.contains('lavagem suv') ||
+                                    title.contains('lavagem carro comum') ||
+                                    title.contains('lavagem caminhonete')) &&
                                 !title.contains('leva e traz');
                           })) ...[
-                            if (_ceraCarnauba || _jetCera) ...[
+                            if (_selectedCera != null) ...[
                               const SizedBox(height: 8),
-                              if (_ceraCarnauba)
-                                Text(
-                                  '• Cera de Carnaúba (+R\$ 10,00)',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: _mainColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                              Text(
+                                _selectedCera == 'carnauba'
+                                    ? '• Cera de Carnaúba (+R\$ 30,00)'
+                                    : '• Jet-Cera (+R\$ 10,00)',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12,
+                                  color: _mainColor,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                              if (_ceraCarnauba && _jetCera)
-                                const SizedBox(height: 2),
-                              if (_jetCera)
-                                Text(
-                                  '• Jet-Cera (+R\$ 30,00)',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: _mainColor,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
+                              ),
                             ],
                           ],
                         ],

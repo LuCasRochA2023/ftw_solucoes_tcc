@@ -62,12 +62,12 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             });
 
             print(
-                '📍 Serviço "Leva e Traz" ${isWithinCoverage ? 'disponível' : 'indisponível'} para este endereço');
+                ' Serviço "Leva e Traz" ${isWithinCoverage ? 'disponível' : 'indisponível'} para este endereço');
           }
         }
       }
     } catch (e) {
-      print('❌ Erro ao carregar endereço do usuário: $e');
+      print('Erro ao carregar endereço do usuário: $e');
       // Em caso de erro, mantém o serviço disponível por padrão
     } finally {
       setState(() {
@@ -161,7 +161,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                     children: [
                       Icon(
                         Icons.info_outline,
-                        color: Colors.orange[700],
+                        color: Colors.orange,
                         size: 16,
                       ),
                       const SizedBox(width: 8),
@@ -180,7 +180,6 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                 ),
               ],
               const SizedBox(height: 8),
-              _buildInfoRow('Garantia', '30 dias'),
               // Informação específica para Leva e Traz
               if (service['title'] == 'Leva e Traz') ...[
                 const SizedBox(height: 8),
@@ -198,13 +197,13 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                _buildInfoRow('Cera de Carnaúba', '+R\$ 10,00'),
+                _buildInfoRow('Cera de Carnaúba', '+R\$ 30,00'),
                 const SizedBox(height: 4),
-                _buildInfoRow('Jet-Cera', '+R\$ 30,00'),
+                _buildInfoRow('Jet-Cera', '+R\$ 10,00'),
               ],
               const SizedBox(height: 16),
               Text(
-                'Dicas importantes:',
+                'Detalhes:',
                 style: GoogleFonts.poppins(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
@@ -313,11 +312,11 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         ];
       case 'higienização':
         return [
-          'Limpeza profunda com extratora de água',
+          'Limpeza do tecido dos bancos com extratora',
           'Remoção de odores com produtos específicos',
           'Tratamento antibacteriano dos bancos',
-          'Limpeza de dutos de ar condicionado',
-          'Aplicação de protetor UV nos plásticos',
+          'Limpeza de forro',
+          'Limpeza de carpetes',
         ];
       case 'hidratação de couro':
         return [
@@ -333,7 +332,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           'Proteção da pintura contra chuva ácida',
           'Brilho intenso e duradouro',
           'Repelente de água e sujeira',
-          'Duração: proteção por até 3 meses',
+          'Duração: proteção por até 2 meses',
         ];
       case 'cristalização de faróis':
         return [
@@ -382,6 +381,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           'Aplicação de tinta original',
           'Polimento para nivelar a superfície',
           'Resultado imperceptível',
+          'Mantêm a cor original do veículo',
         ];
       case 'lavagem por baixo do veículo':
         return [
@@ -394,7 +394,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       case 'leva e traz':
         return [
           'Busca do veículo no local combinado',
-          'Realização do serviço em nossa oficina',
+          'Realização do serviço em nossa lavagem',
           'Entrega do veículo limpo no mesmo local',
           'Horário flexível conforme sua disponibilidade',
         ];
@@ -426,7 +426,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Neutro',
         'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
-        'color': Colors.blueAccent,
+        'color': Colors.lightBlue,
         'price': 'R\$ 70,00',
       },
       {
@@ -434,7 +434,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Completa',
         'description': 'Lavagem especializada para veículos grandes',
         'icon': Icons.local_shipping,
-        'color': Colors.indigo,
+        'color': Colors.lightBlue,
         'price': 'R\$ 100,00',
       },
       {
@@ -442,7 +442,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Busca + Entrega',
         'description': 'Busca, lavagem e entrega do veículo',
         'icon': Icons.directions_car_filled,
-        'color': Colors.purple,
+        'color': Colors.lightBlue,
         'price': 'R\$ 20,00',
       },
     ];
@@ -453,7 +453,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Riscos',
         'description': 'Remoção de riscos superficiais e correção de manchas',
         'icon': Icons.auto_awesome,
-        'color': Colors.purple,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -461,7 +461,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Profundo',
         'description': 'Correção de imperfeições profundas na pintura',
         'icon': Icons.cleaning_services,
-        'color': Colors.orange,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -469,7 +469,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Profunda',
         'description': 'Limpeza profunda do interior com extratora',
         'icon': Icons.cleaning_services_outlined,
-        'color': Colors.green,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -477,7 +477,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Especializado',
         'description': 'Limpeza, hidratação e proteção de bancos em couro',
         'icon': Icons.chair_alt,
-        'color': Colors.brown,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -485,7 +485,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Carnaúba',
         'description': 'Aplicação de cera de carnaúba natural',
         'icon': Icons.auto_awesome_motion,
-        'color': Colors.teal,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -493,7 +493,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Restauração',
         'description': 'Restauração do brilho original dos faróis',
         'icon': Icons.lightbulb_outline,
-        'color': Colors.amber,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -501,7 +501,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Tratamento Especializado',
         'description': 'Tratamento para remover manchas de chuva ácida',
         'icon': Icons.water_drop,
-        'color': Colors.blueGrey,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -509,7 +509,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Limpeza Segura',
         'description': 'Lavagem segura do compartimento do motor',
         'icon': Icons.settings,
-        'color': Colors.grey,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -517,7 +517,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Restauração + Proteção',
         'description': 'Restauração da cor original e proteção',
         'icon': Icons.crop_16_9,
-        'color': Colors.black54,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -525,7 +525,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Limpeza Profunda',
         'description': 'Limpeza profunda de estofados e carpetes',
         'icon': Icons.chair,
-        'color': Colors.lightGreen,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
@@ -533,14 +533,14 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'subtitle': 'Correção + Polimento',
         'description': 'Correção de pequenos riscos e arranhões',
         'icon': Icons.brush,
-        'color': Colors.deepOrange,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
       {
         'title': 'Lavagem por baixo do veículo',
         'description': 'Limpeza completa da parte inferior',
         'icon': Icons.vertical_align_bottom,
-        'color': Colors.brown,
+        'color': Colors.lightBlue,
         'price': 'Preço a combinar',
       },
     ];
@@ -626,7 +626,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                           onPressed: () => _showServiceDetails(service),
                           icon: Icon(
                             Icons.info_outline,
-                            color: service['color'],
+                            color: Colors.orange,
                             size: 20,
                           ),
                           tooltip: 'Saiba mais sobre este serviço',
@@ -642,7 +642,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                           isSelected
                               ? Icons.check_circle
                               : Icons.circle_outlined,
-                          color: isSelected ? service['color'] : Colors.grey,
+                          color: isSelected ? Colors.blue : Colors.grey,
                           size: 20,
                         ),
                       ],
@@ -717,6 +717,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero,
+                  ),
                 ),
                 onPressed: _selectedIndexes.isEmpty
                     ? null
