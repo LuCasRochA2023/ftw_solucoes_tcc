@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../utils/backend_url.dart';
+import '../utils/environment_config.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -434,8 +435,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  static const String mpPublicKey =
-      'APP_USR-a182e1ab-4e96-4223-8621-fd3d52a76d0c';
+  static String get mpPublicKey => EnvironmentConfig.mercadopagoPublicKeyValue;
 
   Future<String?> gerarTokenCartao({
     required String cardNumber,
@@ -1502,7 +1502,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   //   //   final response = await http.post(
   //   //     Uri.parse('https://api.mercadopago.com/v1/card_tokens'),
   //   //     headers: {
-  //   //       'Authorization': 'Bearer YOUR_ACCESS_TOKEN', // Substitua pelo seu token
+  //   //       'Authorization': 'Bearer ${EnvironmentConfig.mercadopagoAccessTokenValue}',
   //   //       'Content-Type': 'application/json',
   //   //     },
   //   //     body: jsonEncode({
