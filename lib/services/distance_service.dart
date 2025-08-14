@@ -7,7 +7,7 @@ class DistanceService {
   static const double _lavagemLatitude = -30.0346;
   static const double _lavagemLongitude = -51.2177;
 
-  /// Calcula a distância entre o endereço do usuário e o estacionamento
+  /// Calcula a distância entr             o endereço do usuário e o estacionamento
   /// Retorna a distância em quilômetros
   static Future<double?> calculateDistanceFromUserAddress(
       Map<String, dynamic> userAddress) async {
@@ -20,7 +20,7 @@ class DistanceService {
           await _getCoordinatesFromAddress(userAddressString);
 
       if (userCoordinates == null) {
-        print('⚠️ Não foi possível obter coordenadas do endereço do usuário');
+        print('Não foi possível obter coordenadas do endereço do usuário');
         return null;
       }
 
@@ -32,10 +32,10 @@ class DistanceService {
         _lavagemLongitude,
       );
 
-      print('📍 Distância calculada: ${distance.toStringAsFixed(2)} km');
+      print('Distância calculada: ${distance.toStringAsFixed(2)} km');
       return distance;
     } catch (e) {
-      print('❌ Erro ao calcular distância: $e');
+      print('Erro ao calcular distância: $e');
       return null;
     }
   }
@@ -47,13 +47,13 @@ class DistanceService {
 
     if (distance == null) {
       print(
-          '⚠️ Não foi possível calcular distância, permitindo serviço por padrão');
+          'Não foi possível calcular distância, permitindo serviço por padrão');
       return true; // Por padrão, permite o serviço se não conseguir calcular
     }
 
     final isWithin = distance <= 4.0;
     print(
-        '📍 Endereço está ${isWithin ? 'dentro' : 'fora'} da área de cobertura (${distance.toStringAsFixed(2)} km)');
+        'Endereço está ${isWithin ? 'dentro' : 'fora'} da área de cobertura (${distance.toStringAsFixed(2)} km)');
     return isWithin;
   }
 
@@ -85,7 +85,7 @@ class DistanceService {
 
       return null;
     } catch (e) {
-      print('❌ Erro ao obter coordenadas do endereço: $e');
+      print('Erro ao obter coordenadas do endereço: $e');
       return null;
     }
   }

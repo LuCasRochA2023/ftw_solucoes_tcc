@@ -111,6 +111,26 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     }
   }
 
+  List<String> _getOptionalServicesText(Map<String, dynamic> optionalServices) {
+    List<String> texts = [];
+
+    if (optionalServices['selectedCera'] != null) {
+      final selectedCera = optionalServices['selectedCera'] as String;
+      switch (selectedCera) {
+        case 'carnauba':
+          texts.add('- Cera de Carnaúba (+R\$ 30,00)');
+          break;
+        case 'jetcera':
+          texts.add('- Jet-Cera (+R\$ 10,00)');
+          break;
+        default:
+          texts.add('- Cera: $selectedCera');
+      }
+    }
+
+    return texts;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -256,12 +276,50 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                       padding: const EdgeInsets.only(
                                           left: 8, top: 2),
                                       child: Text(
-                                        '- ${s['title'] ?? 'Serviço'} (${s['duration'] ?? '?'} min)',
+                                        '- ${s['title'] ?? 'Serviço'}',
                                         style: GoogleFonts.poppins(
                                           color: Colors.grey[800],
                                         ),
                                       ),
                                     )),
+                              ],
+
+                              // Exibir adicionais se houver
+                              if (appointment['optionalServices'] != null &&
+                                  appointment['optionalServices']
+                                      is Map<String, dynamic>) ...[
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.add_circle_outline,
+                                      size: 16,
+                                      color: Colors.blue[700],
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Adicionais:',
+                                      style: GoogleFonts.poppins(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                ..._getOptionalServicesText(
+                                        appointment['optionalServices']
+                                            as Map<String, dynamic>)
+                                    .map((text) => Padding(
+                                          padding: const EdgeInsets.only(
+                                              left: 8, top: 2),
+                                          child: Text(
+                                            text,
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.blue[700],
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        )),
                               ],
                               const SizedBox(height: 4),
                               // Informações sobre valor e pagamento

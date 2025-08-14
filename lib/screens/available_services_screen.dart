@@ -89,6 +89,18 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       return;
     }
 
+    // Verificar se é o serviço "Leva e Traz" e se não há outros serviços selecionados
+    if (service['title'] == 'Leva e Traz' && !_isLevaETrazSelectable()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Selecione pelo menos um serviço de lavagem antes de adicionar "Leva e Traz"'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final isSelected = _selectedIndexes.contains(index);
     final confirm = await showDialog<bool>(
       context: context,
@@ -127,6 +139,166 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
     }
   }
 
+  // Método para verificar se o serviço "Leva e Traz" pode ser selecionado
+  bool _isLevaETrazSelectable() {
+    // Verificar se há pelo menos um serviço de lavagem selecionado
+    final List<String> washingServiceTitles = [
+      'Lavagem SUV',
+      'Lavagem Carro Comum',
+      'Lavagem Caminhonete'
+    ];
+
+    for (int selectedIndex in _selectedIndexes) {
+      final services = _getAllServices();
+      if (selectedIndex < services.length) {
+        final serviceTitle = services[selectedIndex]['title'];
+        if (washingServiceTitles.contains(serviceTitle)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Método auxiliar para obter todos os serviços
+  List<Map<String, dynamic>> _getAllServices() {
+    final List<Map<String, dynamic>> washingServices = [
+      {
+        'title': 'Lavagem SUV',
+        'subtitle': 'Premium',
+        'description':
+            'Lavagem completa externa e interna com produtos premium',
+        'icon': Icons.directions_car,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 80,00',
+      },
+      {
+        'title': 'Lavagem Carro Comum',
+        'subtitle': 'Neutro',
+        'description': 'Lavagem detalhada externa e interna com shampoo neutro',
+        'icon': Icons.directions_car_filled,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 70,00',
+      },
+      {
+        'title': 'Lavagem Caminhonete',
+        'subtitle': 'Completa',
+        'description': 'Lavagem especializada para veículos grandes',
+        'icon': Icons.local_shipping,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 100,00',
+      },
+      {
+        'title': 'Leva e Traz',
+        'subtitle': 'Busca + Entrega',
+        'description': 'Busca, lavagem e entrega do veículo',
+        'icon': Icons.directions_car_filled,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 20,00',
+      },
+    ];
+
+    final List<Map<String, dynamic>> otherServices = [
+      {
+        'title': 'Espelhamento',
+        'subtitle': 'Riscos',
+        'description': 'Remoção de riscos superficiais e correção de manchas',
+        'icon': Icons.auto_awesome,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Polimento',
+        'subtitle': 'Profundo',
+        'description': 'Correção de imperfeições profundas na pintura',
+        'icon': Icons.cleaning_services,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Higienização',
+        'subtitle': 'Profunda',
+        'description': 'Limpeza profunda do interior com extratora',
+        'icon': Icons.cleaning_services_outlined,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Hidratação de Couro',
+        'subtitle': 'Especializado',
+        'description': 'Limpeza, hidratação e proteção de bancos em couro',
+        'icon': Icons.chair_alt,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Enceramento',
+        'subtitle': 'Carnaúba',
+        'description': 'Aplicação de cera de carnaúba natural',
+        'icon': Icons.auto_awesome_motion,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Cristalização de Faróis',
+        'subtitle': 'Restauração',
+        'description': 'Restauração do brilho original dos faróis',
+        'icon': Icons.lightbulb_outline,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Remoção de chuva ácida',
+        'subtitle': 'Tratamento Especializado',
+        'description': 'Tratamento para remover manchas de chuva ácida',
+        'icon': Icons.water_drop,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Lavagem do motor',
+        'subtitle': 'Limpeza Segura',
+        'description': 'Lavagem segura do compartimento do motor',
+        'icon': Icons.settings,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Revitalização de para-choques e plásticos',
+        'subtitle': 'Restauração + Proteção',
+        'description': 'Restauração da cor original e proteção',
+        'icon': Icons.crop_16_9,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Higienização interna com extratora',
+        'subtitle': 'Limpeza Profunda',
+        'description': 'Limpeza profunda de estofados e carpetes',
+        'icon': Icons.chair,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Micropintura',
+        'subtitle': 'Correção + Polimento',
+        'description': 'Correção de pequenos riscos e arranhões',
+        'icon': Icons.brush,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+      {
+        'title': 'Lavagem por baixo do veículo',
+        'description': 'Limpeza completa da parte inferior',
+        'icon': Icons.vertical_align_bottom,
+        'color': Colors.lightBlue,
+        'price': 'Preço a combinar',
+      },
+    ];
+
+    return [...washingServices, ...otherServices];
+  }
+
   void _showServiceDetails(Map<String, dynamic> service) {
     showDialog(
       context: context,
@@ -146,8 +318,6 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
               ),
               const SizedBox(height: 16),
               _buildInfoRow('Preço', service['price'] ?? 'Sob consulta'),
-              const SizedBox(height: 8),
-              _buildInfoRow('Duração', 'Aproximadamente 2-3 horas'),
               if (service['price'] == 'Preço a combinar') ...[
                 const SizedBox(height: 8),
                 Container(
@@ -401,7 +571,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       default:
         return [
           'Serviço realizado por profissionais qualificados',
-          'Uso de produtos de alta qualidade',
+          'Uso de produtos de alrta qualidade',
           'Garantia de satisfação total',
           'Agende com antecedência para melhor atendimento',
           'Atendimento personalizado e cuidadoso',
@@ -595,6 +765,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
               itemBuilder: (context, index) {
                 final service = services[index];
                 final isSelected = _selectedIndexes.contains(index);
+                final isLevaETrazDisabled = service['title'] == 'Leva e Traz' &&
+                    (!_levaETrazAvailable || !_isLevaETrazSelectable());
+
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
                   elevation: 3,
@@ -606,8 +779,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                     leading: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: service['title'] == 'Leva e Traz' &&
-                                !_levaETrazAvailable
+                        color: isLevaETrazDisabled
                             ? Colors.grey
                             : service['color'],
                         shape: BoxShape.circle,
@@ -655,10 +827,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: service['title'] == 'Leva e Traz' &&
-                                      !_levaETrazAvailable
-                                  ? Colors.grey
-                                  : null,
+                              color: isLevaETrazDisabled ? Colors.grey : null,
                             ),
                             maxLines: service['title'] == 'Lavagem Caminhonete'
                                 ? 2
@@ -666,8 +835,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (service['title'] == 'Leva e Traz' &&
-                            !_levaETrazAvailable) ...[
+                        if (isLevaETrazDisabled) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -677,7 +845,10 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              'Fora da área',
+                              service['title'] == 'Leva e Traz' &&
+                                      !_levaETrazAvailable
+                                  ? 'Fora da área'
+                                  : 'Selecione um serviço',
                               style: GoogleFonts.poppins(
                                 fontSize: 8,
                                 color: Colors.white,
@@ -692,7 +863,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                         ? Text(
                             service['price'],
                             style: GoogleFonts.poppins(
-                              color: service['color'],
+                              color: isLevaETrazDisabled
+                                  ? Colors.grey
+                                  : service['color'],
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
                             ),

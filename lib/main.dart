@@ -30,7 +30,7 @@ Future<void> initializeFirebase() async {
     debugPrint('Firebase inicializado com sucesso');
   } catch (e) {
     debugPrint('Erro ao inicializar Firebase: $e');
-    // Tenta inicializar novamente com configurações padrão
+
     try {
       await Firebase.initializeApp();
       debugPrint('Firebase inicializado com configurações padrão');
@@ -50,7 +50,6 @@ void main() async {
     debugPrint('Firebase inicializado com sucesso');
   } catch (e) {
     debugPrint('Erro ao inicializar Firebase: $e');
-    // Continue with default configuration
     await Firebase.initializeApp();
     debugPrint('Firebase inicializado com configurações padrão');
   }

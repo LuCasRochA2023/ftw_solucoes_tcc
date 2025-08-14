@@ -222,15 +222,15 @@ class _ServicesScreenState extends State<ServicesScreen> {
       case 'lavagem':
       case 'lavagem carro comum':
       case 'lavagem caminhonete':
-        return '• Duração média: 1 hora\n• Inclui lavagem externa e interna\n• Produtos de qualidade utilizados\n• Secagem completa incluída\n• Limpeza de vidros e rodas';
+        return '• Inclui lavagem externa e interna\n• Produtos de qualidade utilizados\n• Secagem completa incluída\n• Limpeza de vidros e rodas';
       case 'espelhamento':
-        return '• Duração média: 2-3 horas\n• Remove riscos superficiais\n• Restaura o brilho original\n• Proteção contra novos riscos\n• Aplicação de produtos especiais';
+        return '• Remove riscos superficiais\n• Restaura o brilho original\n• Proteção contra novos riscos\n• Aplicação de produtos especiais';
       case 'polimento':
-        return '• Duração média: 2-4 horas\n• Remove oxidação e manchas\n• Restaura cor original\n• Aplicação de cera protetora\n• Tratamento de pintura';
+        return '• Remove oxidação e manchas\n• Restaura cor original\n• Aplicação de cera protetora\n• Tratamento de pintura';
       case 'higienização':
-        return '• Duração média: 2-3 horas\n• Limpeza profunda do interior\n• Eliminação de odores\n• Tratamento de couro incluído\n• Aspiração completa';
+        return '• Limpeza profunda do interior\n• Eliminação de odores\n• Tratamento de couro incluído\n• Aspiração completa';
       case 'hidratação de couro':
-        return '• Duração média: 1-2 horas\n• Nutrição do couro\n• Prevenção de rachaduras\n• Restauração da maciez\n• Proteção contra desgaste';
+        return '• Nutrição do couro\n• Prevenção de rachaduras\n• Restauração da maciez\n• Proteção contra desgaste';
       case 'leva e traz':
         return '• Serviço de conveniência\n• Busca e entrega no local\n• Horário flexível\n• Economia de tempo\n• Segurança garantida';
       default:

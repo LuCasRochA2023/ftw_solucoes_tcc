@@ -47,14 +47,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     'Leva e Traz': 20.0,
   };
 
-  int _totalDurationMinutes = 0;
   String _serviceTitles = '';
   Color _mainColor = Colors.blue;
   IconData _mainIcon = Icons.build;
 
   _ScheduleServiceScreenState()
-      : _totalDurationMinutes = 0,
-        _serviceTitles = '',
+      : _serviceTitles = '',
         _mainColor = Colors.blue,
         _mainIcon = Icons.build;
 
@@ -67,7 +65,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   @override
   void initState() {
     super.initState();
-    _totalDurationMinutes = _calculateTotalDuration(widget.services);
     _serviceTitles = widget.services.map((s) => s['title']).join(', ');
     _mainColor = widget.services.first['color'] ?? Colors.blue;
     _mainIcon = widget.services.first['icon'] ?? Icons.build;
@@ -75,21 +72,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _generateTimeSlots();
     _loadBookedTimeSlots();
     _loadUserCars();
-  }
-
-  int _calculateTotalDuration(List<Map<String, dynamic>> services) {
-    int total = 0;
-    for (final s in services) {
-      final title = (s['title'] as String).toLowerCase();
-      if (title.contains('lavagem suv') ||
-          title.contains('lavagem carro comum') ||
-          title.contains('lavagem caminhonete')) {
-        total += 60;
-      } else {
-        total += 120;
-      }
-    }
-    return total;
   }
 
   double _calculateTotalValue() {
@@ -150,7 +132,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     final startTime = DateTime(2024, 1, 1, 8, 0);
     final endTime = DateTime(2024, 1, 1, 17, 0);
     const step = Duration(minutes: 30);
-    final block = Duration(minutes: _totalDurationMinutes);
+    const block = Duration(minutes: 120); // Duração fixa de 2 horas
 
     DateTime currentSlot = startTime;
     while (currentSlot.add(block).isBefore(endTime.add(step)) ||
@@ -162,7 +144,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Função para verificar se o bloco está livre
   bool _isBlockAvailable(DateTime start, Map<String, String> bookedSlots) {
-    final block = Duration(minutes: _totalDurationMinutes);
+    const block = Duration(minutes: 120); // Duração fixa de 2 horas
     DateTime check = start;
     while (check.isBefore(start.add(block))) {
       final slotStr = DateFormat('HH:mm').format(check);
@@ -342,7 +324,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[1]),
       );
 
-      // Montar lista de serviços com título, tipo e duração
+      // Montar lista de serviços com título e tipo
       final List<Map<String, dynamic>> servicesToSave =
           widget.services.map((s) {
         final title = (s['title'] as String);
@@ -350,7 +332,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         return {
           'title': title,
           'type': isLavagem ? 'lavagem' : 'outro',
-          'duration': isLavagem ? 60 : 120, // minutos
         };
       }).toList();
 
@@ -383,7 +364,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         'car': _selectedCar,
         'services': servicesToSave,
         'dateTime': dateTime,
-        'duration': _totalDurationMinutes,
         'status': appointmentStatus,
         'amount': totalAmount > 0 ? totalAmount : null,
         'createdAt': FieldValue.serverTimestamp(),
@@ -503,7 +483,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Você receberá uma confirmação por email e poderá acompanhar o status do seu agendamento.',
+                      'Você pode acompanhar o status do seu agendamento na página "Meus Agendamentos".',
                       style: GoogleFonts.poppins(
                         fontSize: 14,
                         color: Colors.black54,
@@ -613,15 +593,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     'Selecione a data e horário desejados',
                                     style: GoogleFonts.poppins(
                                       color: Colors.black54,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Duração total: ${(_totalDurationMinutes / 60).floor()}h${_totalDurationMinutes % 60 != 0 ? ' ${_totalDurationMinutes % 60}min' : ''}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: _mainColor,
                                     ),
                                   ),
                                 ],
