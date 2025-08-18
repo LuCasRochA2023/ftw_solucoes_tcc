@@ -9,6 +9,7 @@ import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
+import 'package:ftw_solucoes/screens/balance_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -137,6 +138,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.account_balance_wallet),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BalanceScreen(
+                    authService: widget.authService,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _handleLogout,

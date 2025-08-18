@@ -2,12 +2,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class EnvironmentConfig {
   // Configuração do ambiente
-  static const bool isProduction = true; // Usando produção com URL fornecida
+  static const bool isProduction =
+      true; // Usando produção para acessar srv962030.hstgr.cloud
 
   // URLs dos backends
-  static const String localBackendUrl = 'http://10.0.2.2:3001';
-  static const String productionBackendUrl =
-      'https://back-end-ftw-flutter-1.onrender.com';
+  static const String localBackendUrl =
+      'http://10.0.2.2:3001'; // Para emulador Android
+  static const String productionBackendUrl = 'https://srv962030.hstgr.cloud';
 
   // Configurações do Mercado Pago
   static String get mercadopagoPublicKey {
@@ -18,6 +19,11 @@ class EnvironmentConfig {
   static String get mercadopagoAccessToken {
     return dotenv.env['MERCADOPAGO_ACCESS_TOKEN'] ??
         'APP_USR-1234567890123456789012345678901234567890';
+  }
+
+  // URL de Pagamento
+  static String get paymentUrl {
+    return dotenv.env['PAYMENT_URL'] ?? 'https://srv962030.hstgr.cloud';
   }
 
   // URL ativa baseada no ambiente
@@ -55,4 +61,7 @@ class EnvironmentConfig {
   // Métodos para obter configurações do Mercado Pago
   static String get mercadopagoPublicKeyValue => mercadopagoPublicKey;
   static String get mercadopagoAccessTokenValue => mercadopagoAccessToken;
+
+  // Método para obter URL de pagamento
+  static String get paymentUrlValue => paymentUrl;
 }

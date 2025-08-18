@@ -98,7 +98,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _cpfController.text = userData['cpf'] ?? '';
             _phoneController.text = userData['phone'] ?? '';
 
-            // Carregar dados do endereço que está salvo como campo direto no documento
             final address = userData['address'] as Map<String, dynamic>?;
             if (address != null) {
               _cepController.text = address['cep'] ?? '';

@@ -21,6 +21,7 @@ class PaymentScreen extends StatefulWidget {
   final String carModel;
   final String carPlate;
   final String appointmentId;
+  final double? balanceToUse;
 
   const PaymentScreen({
     Key? key,
@@ -31,6 +32,7 @@ class PaymentScreen extends StatefulWidget {
     required this.carModel,
     required this.carPlate,
     required this.appointmentId,
+    this.balanceToUse,
   }) : super(key: key);
 
   @override
@@ -45,6 +47,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Timer? _statusTimer;
   int _selectedTab = 0; // 0 = Pix, 1 = Cartão
   bool _isInitialized = false; // Flag para evitar inicialização duplicada
+  bool _isDisposed = false; // Flag para controlar se a tela foi descartada
+  bool _isCancelling = false; // Flag para evitar cancelamento múltiplo
+  bool _balanceRefunded = false; // Flag para evitar devolução múltipla do saldo
 
   // Campos do formulário de cartão
   final _cardNumberController = TextEditingController();
@@ -77,6 +82,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     print('=== DEBUG: PaymentScreen initState ===');
+    _balanceRefunded =
+        false; // Garantir que a flag seja inicializada como false
     // Inicializar imediatamente sem delay
     _initializePayment();
   }
@@ -98,6 +105,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   void dispose() {
+    _isDisposed = true;
     _statusTimer?.cancel();
     _cardNumberController.dispose();
     _expiryController.dispose();
@@ -172,7 +180,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     try {
       print('=== DEBUG: Iniciando criação de pagamento PIX ===');
-      print('URL: ${BackendUrl.baseUrl}/create-payment');
+      print('BackendUrl.baseUrl: ${BackendUrl.baseUrl}');
+      print(
+          'EnvironmentConfig.activeBackendUrl: ${EnvironmentConfig.activeBackendUrl}');
+      print('URL completa: ${BackendUrl.baseUrl}/create-payment');
       print('CPF atual: $_userCpf');
 
       // Usar dados do usuário logado se disponível
@@ -224,6 +235,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       print('Body: ${jsonEncode(requestBody)}');
 
       print('=== DEBUG: Enviando requisição para o backend ===');
+      print('URL final: ${BackendUrl.baseUrl}/create-payment');
+      print('Headers: $headers');
+      print('Body: ${jsonEncode(requestBody)}');
+
       final response = await http
           .post(
             Uri.parse('${BackendUrl.baseUrl}/create-payment'),
@@ -234,6 +249,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       print('=== DEBUG: Resposta recebida ===');
       print('Status Code: ${response.statusCode}');
+      print('Response Headers: ${response.headers}');
       print('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
@@ -305,7 +321,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _isProcessing = false;
         });
 
-        // Adicionar botão de retry para erros
         _showRetryButton();
       }
     } catch (e) {
@@ -335,13 +350,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _isProcessing = false;
       });
 
-      // Adicionar botão de retry para exceções
       _showRetryButton();
     }
   }
 
   void _showRetryButton() {
-    // Função para mostrar botão de retry quando há erro
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -349,7 +362,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             children: [
               Icon(Icons.refresh, color: Colors.white),
               SizedBox(width: 8),
-              Text('Erro no pagamento. Toque para tentar novamente.'),
+              Expanded(
+                child: Text('Erro no pagamento. Toque para tentar novamente.'),
+              ),
             ],
           ),
           action: SnackBarAction(
@@ -368,29 +383,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   void _startStatusPolling() {
     _statusTimer?.cancel();
-    if (_paymentId == null) return;
+    if (_paymentId == null || _isDisposed) return;
 
-    // Primeira verificação imediata
     _checkPixPaymentStatus();
 
-    // Polling a cada 2 segundos (mais rápido)
     _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      _checkPixPaymentStatus();
+      if (!_isDisposed) {
+        _checkPixPaymentStatus();
+      }
     });
   }
 
   Future<void> _checkPixPaymentStatus() async {
-    if (_paymentId == null) return;
+    if (_paymentId == null || _isDisposed) return;
 
     final status = await _consultarStatusPagamento();
     if (status == 'approved') {
       _statusTimer?.cancel();
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         await _onPaymentSuccess();
       }
     } else if (status == 'rejected' || status == 'cancelled') {
       _statusTimer?.cancel();
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() {
           _errorMessage = 'Pagamento foi rejeitado ou cancelado.';
           _isProcessing = false;
@@ -417,21 +432,213 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _onPaymentSuccess() async {
-    if (widget.appointmentId.isNotEmpty) {
-      await FirebaseFirestore.instance
-          .collection('appointments')
-          .doc(widget.appointmentId)
-          .update({'status': 'confirmed'});
+    print('=== DEBUG: _onPaymentSuccess chamada ===');
+    print('balanceToUse: ${widget.balanceToUse}');
+    print('appointmentId: ${widget.appointmentId}');
+    print('isDisposed: $_isDisposed');
+
+    // Verificar se a tela foi descartada antes de processar
+    if (_isDisposed) {
+      print('=== DEBUG: Tela descartada, cancelando processamento ===');
+      return;
     }
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (context) => HomeScreen(authService: AuthService()),
-          settings: const RouteSettings(arguments: 'pagamento_sucesso'),
-        ),
-        (route) => false,
-      );
+
+    try {
+      // Se há saldo para usar, processar o pagamento com saldo
+      if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
+        print('=== DEBUG: Processando pagamento com saldo ===');
+        await _processBalancePayment();
+      }
+
+      if (widget.appointmentId.isNotEmpty) {
+        print('=== DEBUG: Atualizando status do agendamento ===');
+        await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(widget.appointmentId)
+            .update({'status': 'confirmed'});
+      }
+      if (mounted && !_isDisposed) {
+        print('=== DEBUG: Navegando para HomeScreen ===');
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(authService: AuthService()),
+            settings: const RouteSettings(arguments: 'pagamento_sucesso'),
+          ),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      print('Erro ao processar pagamento com saldo: $e');
+    }
+  }
+
+  Future<void> _processBalancePayment() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
+
+      final currentBalance = (await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get())
+              .data()?['balance'] ??
+          0.0;
+
+      final finalBalance = currentBalance - widget.balanceToUse!;
+
+      // Atualizar saldo do usuário
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .update({'balance': finalBalance});
+
+      // Registrar transação de débito
+      await FirebaseFirestore.instance.collection('transactions').add({
+        'userId': user.uid,
+        'amount': widget.balanceToUse!,
+        'type': 'debit',
+        'description': 'Pagamento de agendamento - ${widget.serviceTitle}',
+        'appointmentId': widget.appointmentId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      throw Exception('Erro ao processar pagamento com saldo: $e');
+    }
+  }
+
+  Future<void> _cancelAppointmentAndRefundBalance() async {
+    print('=== DEBUG: _cancelAppointmentAndRefundBalance chamada ===');
+    print('=== DEBUG: _isCancelling: $_isCancelling ===');
+    print('=== DEBUG: _balanceRefunded: $_balanceRefunded ===');
+
+    // Evitar execução múltipla
+    if (_isCancelling) {
+      print('=== DEBUG: Cancelamento já em andamento, pulando... ===');
+      return;
+    }
+
+    _isCancelling = true;
+    print('=== DEBUG: Iniciando cancelamento do agendamento ===');
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
+
+      // Cancelar agendamento
+      if (widget.appointmentId.isNotEmpty) {
+        print('=== DEBUG: Cancelando agendamento ${widget.appointmentId} ===');
+
+        // Verificar se já foi cancelado
+        final appointmentDoc = await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(widget.appointmentId)
+            .get();
+
+        if (appointmentDoc.exists &&
+            appointmentDoc.data()?['status'] != 'cancelled') {
+          await FirebaseFirestore.instance
+              .collection('appointments')
+              .doc(widget.appointmentId)
+              .update({'status': 'cancelled'});
+          print('=== DEBUG: Agendamento cancelado com sucesso ===');
+        } else {
+          print('=== DEBUG: Agendamento já estava cancelado ===');
+        }
+      }
+
+      // Se há saldo que foi usado, devolver (apenas uma vez)
+      print('=== DEBUG: Verificando condições para devolução ===');
+      print('=== DEBUG: balanceToUse: ${widget.balanceToUse} ===');
+      print('=== DEBUG: _balanceRefunded: $_balanceRefunded ===');
+
+      if (widget.balanceToUse != null &&
+          widget.balanceToUse! > 0 &&
+          !_balanceRefunded) {
+        print(
+            '=== DEBUG: Processando devolução de saldo R\$ ${widget.balanceToUse!.toStringAsFixed(2)} ===');
+
+        // Verificar se já existe uma transação de devolução para este agendamento
+        final existingRefund = await FirebaseFirestore.instance
+            .collection('transactions')
+            .where('userId', isEqualTo: user.uid)
+            .where('appointmentId', isEqualTo: widget.appointmentId)
+            .where('type', isEqualTo: 'credit')
+            .get();
+
+        if (existingRefund.docs.isNotEmpty) {
+          print('=== DEBUG: Devolução já foi processada anteriormente ===');
+          _balanceRefunded = true;
+        } else {
+          // Usar transação do Firestore para garantir atomicidade
+          await FirebaseFirestore.instance.runTransaction((transaction) async {
+            // Buscar documento do usuário
+            final userDoc = await transaction.get(
+                FirebaseFirestore.instance.collection('users').doc(user.uid));
+
+            final currentBalance =
+                (userDoc.data()?['balance'] ?? 0.0).toDouble();
+            final refundedBalance = currentBalance + widget.balanceToUse!;
+
+            print(
+                '=== DEBUG: Saldo atual: R\$ ${currentBalance.toStringAsFixed(2)} ===');
+            print(
+                '=== DEBUG: Saldo após devolução: R\$ ${refundedBalance.toStringAsFixed(2)} ===');
+
+            // Atualizar saldo do usuário
+            transaction.update(
+                FirebaseFirestore.instance.collection('users').doc(user.uid),
+                {'balance': refundedBalance});
+
+            // Registrar transação de crédito (devolução)
+            final transactionRef =
+                FirebaseFirestore.instance.collection('transactions').doc();
+            transaction.set(transactionRef, {
+              'userId': user.uid,
+              'amount': widget.balanceToUse!,
+              'type': 'credit',
+              'description':
+                  'Devolução - Cancelamento de agendamento - ${widget.serviceTitle}',
+              'appointmentId': widget.appointmentId,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+          });
+
+          _balanceRefunded = true;
+          print('=== DEBUG: Saldo devolvido com sucesso ===');
+        }
+      } else if (widget.balanceToUse != null &&
+          widget.balanceToUse! > 0 &&
+          _balanceRefunded) {
+        print('=== DEBUG: Saldo já foi devolvido nesta sessão ===');
+      }
+
+      print('=== DEBUG: Cancelamento concluído com sucesso ===');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.balanceToUse != null && widget.balanceToUse! > 0
+                  ? 'Agendamento cancelado. R\$ ${widget.balanceToUse!.toStringAsFixed(2)} devolvido ao seu saldo.'
+                  : 'Agendamento cancelado.',
+            ),
+            backgroundColor: Colors.blue,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Erro ao cancelar agendamento: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao cancelar agendamento: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      _isCancelling = false; // Reset flag
     }
   }
 
@@ -510,7 +717,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  // Função para verificar o status do pagamento
   Future<void> _checkPaymentStatus(String paymentId) async {
     try {
       print('=== DEBUG: Verificando status do pagamento ===');
@@ -554,10 +760,122 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pagamento')),
+      appBar: AppBar(
+        title: const Text('Pagamento'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // Se há saldo sendo usado, mostrar confirmação
+            if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
+              final navigatorContext = context;
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Cancelar Pagamento'),
+                  content: Text(
+                      'Você está usando R\$ ${widget.balanceToUse!.toStringAsFixed(2)} do seu saldo. '
+                      'Se cancelar agora, você voltará para a tela inicial. O agendamento permanecerá ativo e o saldo não será alterado. '
+                      'Deseja continuar?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Continuar Pagamento'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        print(
+                            '=== DEBUG: Botão Voltar ao Início pressionado ===');
+
+                        // Fechar dialog primeiro
+                        Navigator.pop(context);
+                        print('=== DEBUG: Dialog fechado ===');
+
+                        // Apenas voltar para tela inicial, sem cancelar agendamento
+                        print(
+                            '=== DEBUG: Voltando para tela inicial sem cancelar ===');
+
+                        // Voltar para tela inicial
+                        if (mounted) {
+                          print(
+                              '=== DEBUG: Tentando voltar para tela inicial ===');
+                          Navigator.pushAndRemoveUntil(
+                            navigatorContext,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  HomeScreen(authService: AuthService()),
+                            ),
+                            (route) =>
+                                false, // Remove todas as rotas anteriores
+                          );
+                          print(
+                              '=== DEBUG: Navegação para tela inicial executada ===');
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Voltar ao Início'),
+                    ),
+                  ],
+                ),
+              );
+            } else {
+              // Se não há saldo, voltar normalmente
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
       body: Column(
         children: [
           const SizedBox(height: 24),
+
+          // Informação sobre saldo usado (se aplicável)
+          if (widget.balanceToUse != null && widget.balanceToUse! > 0)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.blue[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.blue[700],
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Saldo usado: R\$ ${widget.balanceToUse!.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
+                            fontSize: 16,
+                          ),
+                        ),
+                        Text(
+                          'Valor restante: R\$ ${widget.amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                            color: Colors.blue[600],
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 16),
           Center(
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -723,12 +1041,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Usando CPF do perfil: ${_userCpf!.replaceAll(RegExp(r'[^\d]'), '').replaceAllMapped(RegExp(r'(\d{3})(\d{3})(\d{3})(\d{2})'), (Match m) => '${m[1]}.${m[2]}.${m[3]}-${m[4]}')}',
+                        'CPF: ${_userCpf!.replaceAll(RegExp(r'[^\d]'), '').replaceAllMapped(RegExp(r'(\d{3})(\d{3})(\d{3})(\d{2})'), (Match m) => '${m[1]}.${m[2]}.${m[3]}-${m[4]}')}',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.green[700],
                           fontWeight: FontWeight.w500,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
@@ -750,7 +1069,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.info_outline,
                           color: Colors.orange,
                           size: 20,
@@ -769,39 +1088,45 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Column(
                       children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    ProfileScreen(authService: AuthService()),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.person),
-                          label: const Text('Ir ao Perfil'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange[600],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      ProfileScreen(authService: AuthService()),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.person),
+                            label: const Text('Ir ao Perfil'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange[600],
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            _criarPagamentoPix();
-                          },
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Tentar PIX'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green[600],
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              _criarPagamentoPix();
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Tentar PIX'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green[600],
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                            ),
                           ),
                         ),
                       ],
@@ -810,81 +1135,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ),
           ],
-
-          // Mensagem de erro
-          if (_errorMessage != null && !_isProcessing)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red[200]!),
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: Colors.red[600],
-                    size: 32,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Erro ao gerar PIX',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[700],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.red[600],
-                    ),
-                    overflow: TextOverflow.visible,
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _errorMessage = null;
-                            _pixQrCode = null;
-                          });
-                          _criarPagamentoPix();
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Tentar Novamente'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _selectedTab = 1; // Mudar para cartão
-                          });
-                        },
-                        icon: const Icon(Icons.credit_card),
-                        label: const Text('Usar Cartão'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
 
           // QR Code
           if (_pixQrCode != null && _pixQrCode!.isNotEmpty && !_isProcessing)
@@ -949,167 +1199,86 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   ),
                 ],
               ),
-            )
-          else if (_pixQrCode == null && !_isProcessing)
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.orange[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.orange),
-              ),
-              child: const Column(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: Colors.orange,
-                    size: 48,
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'QR Code não foi gerado',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.orange,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Tente novamente ou entre em contato com o suporte',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ],
-              ),
             ),
-          const SizedBox(height: 24),
-          const SizedBox(height: 16),
-          const Text('Após o pagamento, a confirmação é automática.',
-              style: TextStyle(color: Colors.green)),
-          const SizedBox(height: 24),
+
           if (_errorMessage != null)
             Container(
-              padding: const EdgeInsets.all(16),
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              margin: const EdgeInsets.symmetric(vertical: 16),
               decoration: BoxDecoration(
                 color: Colors.red[50],
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red),
+                border: Border.all(color: Colors.red[200]!),
               ),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.error_outline, color: Colors.red[600]),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Erro ao Gerar PIX',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.red,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
+                  Icon(
+                    Icons.error_outline,
+                    color: Colors.red[600],
+                    size: 48,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Erro de Conexão',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red[700],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red),
+                    'Não foi possível conectar ao servidor de pagamento.',
                     textAlign: TextAlign.center,
-                    overflow: TextOverflow.visible,
-                  ),
-                  const SizedBox(height: 12),
-                  // Botão de retry mais proeminente
-                  ElevatedButton.icon(
-                    onPressed: _isProcessing
-                        ? null
-                        : () {
-                            setState(() {
-                              _errorMessage = null;
-                              _isProcessing = false;
-                            });
-                            _criarPagamentoPix();
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: _isProcessing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: Text(
-                      _isProcessing ? 'Tentando...' : 'Tentar Novamente',
-                      style: const TextStyle(fontSize: 16),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.red[600],
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  if (_errorMessage!.contains('Mercado Pago'))
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing
+                          ? null
+                          : () {
+                              setState(() {
+                                _errorMessage = null;
+                                _isProcessing = false;
+                              });
+                              _criarPagamentoPix();
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red[600],
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      child: const Column(
-                        children: [
-                          Text(
-                            'Soluções:',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            '• Verifique se a conta do Mercado Pago está configurada corretamente\n'
-                            '• Certifique-se de que as chaves de API estão habilitadas\n'
-                            '• Tente usar pagamento com cartão como alternativa',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.left,
-                          ),
-                        ],
+                      icon: _isProcessing
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.refresh, size: 20),
+                      label: Text(
+                        _isProcessing ? 'Tentando...' : 'Tentar Novamente',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
+                  ),
                 ],
-              ),
-            ),
-
-          if (_errorMessage != null && _errorMessage!.contains('Mercado Pago'))
-            ElevatedButton.icon(
-              onPressed: () => setState(() => _selectedTab = 1),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              icon: const Icon(Icons.credit_card),
-              label: const Text(
-                'Usar Cartão',
-                style: TextStyle(fontSize: 16),
               ),
             ),
         ],
@@ -1173,55 +1342,51 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               : null,
                     ),
                     const SizedBox(height: 20),
-                    Row(
+                    Column(
                       children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _expiryController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4),
-                              _ExpiryDateInputFormatter(),
-                            ],
-                            decoration: InputDecoration(
-                              labelText: 'Validade (MM/AA)',
-                              prefixIcon: const Icon(Icons.date_range),
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              filled: true,
-                              fillColor: Colors.grey[100],
-                              contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 18, horizontal: 16),
-                              hintText: '12/25',
-                            ),
-                            validator: (v) =>
-                                v == null || v.length < 5 ? 'Inválido' : null,
+                        TextFormField(
+                          controller: _expiryController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4),
+                            _ExpiryDateInputFormatter(),
+                          ],
+                          decoration: InputDecoration(
+                            labelText: 'Validade (MM/AA)',
+                            prefixIcon: const Icon(Icons.date_range),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 18, horizontal: 16),
+                            hintText: '12/25',
                           ),
+                          validator: (v) =>
+                              v == null || v.length < 5 ? 'Inválido' : null,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _cvvController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4),
-                            ],
-                            decoration: InputDecoration(
-                              labelText: 'CVV',
-                              prefixIcon: const Icon(Icons.lock),
-                              border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              filled: true,
-                              fillColor: Colors.grey[100],
-                              contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 18, horizontal: 16),
-                              hintText: '123',
-                            ),
-                            validator: (v) =>
-                                v == null || v.length < 3 ? 'Inválido' : null,
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _cvvController,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4),
+                          ],
+                          decoration: InputDecoration(
+                            labelText: 'CVV',
+                            prefixIcon: const Icon(Icons.lock),
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                            fillColor: Colors.grey[100],
+                            contentPadding: const EdgeInsets.symmetric(
+                                vertical: 18, horizontal: 16),
+                            hintText: '123',
                           ),
+                          validator: (v) =>
+                              v == null || v.length < 3 ? 'Inválido' : null,
                         ),
                       ],
                     ),
@@ -1271,6 +1436,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                       fontSize: 16,
                                       fontWeight: FontWeight.w500,
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -1308,6 +1474,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                                       fontSize: 12,
                                       color: Colors.orange[600],
                                     ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
@@ -1475,18 +1642,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontWeight: FontWeight.w500,
-              color: Colors.grey,
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               value,
               style: const TextStyle(fontWeight: FontWeight.w600),
               textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],

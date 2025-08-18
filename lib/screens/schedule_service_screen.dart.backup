@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,29 +24,18 @@ class ScheduleServiceScreen extends StatefulWidget {
 }
 
 class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
-  DateTime _selectedDate = _getNextAvailableDate(DateTime.now());
+  DateTime _selectedDate = DateTime.now();
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
-  final TextEditingController _balanceAmountController =
-      TextEditingController();
-
-  // Função para obter a próxima data disponível (não domingo)
-  static DateTime _getNextAvailableDate(DateTime date) {
-    DateTime currentDate = date;
-    while (currentDate.weekday == DateTime.sunday) {
-      currentDate = currentDate.add(const Duration(days: 1));
-    }
-    return currentDate;
-  }
 
   // Variável para opcional de cera (apenas uma seleção)
   String? _selectedCera;
 
   final List<String> _timeSlots = [];
-  DateFormat? _dateFormat;
+  late DateFormat _dateFormat;
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
@@ -77,20 +65,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeAsync();
-  }
-
-  void _initializeAsync() async {
     _serviceTitles = widget.services.map((s) => s['title']).join(', ');
     _mainColor = widget.services.first['color'] ?? Colors.blue;
     _mainIcon = widget.services.first['icon'] ?? Icons.build;
-    await _initializeDateFormatting();
-    await _generateTimeSlots();
-    await _loadBookedTimeSlots();
-    await _loadUserCars();
-    if (mounted) {
-      setState(() {}); // Atualiza a UI apenas uma vez após toda inicialização
-    }
+    _initializeDateFormatting();
+    _generateTimeSlots();
+    _loadBookedTimeSlots();
+    _loadUserCars();
   }
 
   double _calculateTotalValue() {
@@ -146,52 +127,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _dateFormat = DateFormat('dd/MM/yyyy', 'pt_BR');
   }
 
-  Future<void> _generateTimeSlots() async {
-    _timeSlots.clear();
-    try {
-      // Buscar horários disponíveis do Firebase
-      final snapshot = await _firestore
-          .collection('disponibilidade_clientes')
-          .where('isAvailableForClients', isEqualTo: true)
-          .get();
-
-      final Set<String> availableSlots = {};
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final date = data['date'] as String;
-        final startTime = data['startTime'] as String;
-
-        // Verificar se é para a data selecionada
-        final selectedDateStr =
-            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
-        if (date == selectedDateStr) {
-          availableSlots.add(startTime);
-        }
-      }
-
-      // Adicionar horários disponíveis
-      _timeSlots.addAll(availableSlots.toList());
-      _timeSlots.sort();
-
-      // Se não há horários disponíveis, mostrar mensagem
-      if (_timeSlots.isEmpty) {
-        debugPrint(
-            'Nenhum horário disponível encontrado para a data selecionada');
-        // Não usar fallback - deixar a lista vazia para mostrar que não há disponibilidade
-      }
-    } catch (e) {
-      debugPrint('Erro ao carregar horários: $e');
-      // Fallback: horários padrão se houver erro
-      _generateFallbackTimeSlots();
-    }
-  }
-
-  void _generateFallbackTimeSlots() {
+  void _generateTimeSlots() {
     _timeSlots.clear();
     final startTime = DateTime(2024, 1, 1, 8, 0);
     final endTime = DateTime(2024, 1, 1, 17, 0);
     const step = Duration(minutes: 30);
-    const block = Duration(minutes: 120);
+    const block = Duration(minutes: 120); // Duração fixa de 2 horas
 
     DateTime currentSlot = startTime;
     while (currentSlot.add(block).isBefore(endTime.add(step)) ||
@@ -216,8 +157,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   }
 
   Future<void> _loadBookedTimeSlots() async {
-    if (!mounted) return;
-
     setState(() => _isLoading = true);
     try {
       final startOfDay = DateTime(
@@ -270,16 +209,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         }
       }
 
-      if (mounted) {
-        setState(() {
-          _bookedTimeSlots = bookedSlots;
-          _isLoading = false;
-        });
-      }
+      setState(() {
+        _bookedTimeSlots = bookedSlots;
+      });
     } catch (e) {
       debugPrint('Erro ao carregar horários : $e');
       if (mounted) {
-        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao carregar horários: $e'),
@@ -287,12 +222,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           ),
         );
       }
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
   Future<void> _loadUserCars() async {
-    if (!mounted) return;
-
     try {
       final user = _auth.currentUser;
       if (user != null) {
@@ -303,13 +238,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
             .orderBy('createdAt', descending: true)
             .get();
 
-        if (mounted) {
-          setState(() {
-            _userCars = snapshot.docs
-                .map((doc) => {...doc.data(), 'id': doc.id})
-                .toList();
-          });
-        }
+        setState(() {
+          _userCars = snapshot.docs
+              .map((doc) => {...doc.data(), 'id': doc.id})
+              .toList();
+        });
       }
     } catch (e) {
       debugPrint('Error loading cars: $e');
@@ -327,8 +260,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _getNextAvailableDate(_selectedDate),
-      firstDate: _getNextAvailableDate(DateTime.now()),
+      initialDate: _selectedDate,
+      firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 30)),
       locale: const Locale('pt', 'BR'),
       builder: (context, child) {
@@ -351,23 +284,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         _selectedDate = picked;
         _selectedTime = null;
       });
-      await _generateTimeSlots();
-      await _loadBookedTimeSlots();
-      if (mounted) {
-        setState(() {}); // Força atualização da UI
-
-        // Mostrar mensagem se não há horários disponíveis
-        if (_timeSlots.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  'Nenhum horário disponível para ${_dateFormat?.format(picked) ?? 'esta data'}'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      }
+      _loadBookedTimeSlots();
     }
   }
 
@@ -392,455 +309,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       return;
     }
 
-    // Verificar saldo antes de agendar
-    await _checkBalanceAndSchedule();
-  }
-
-  Future<void> _checkBalanceAndSchedule() async {
     setState(() => _isLoading = true);
 
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
-
-      // Buscar saldo do usuário
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
-      final currentBalance = (userDoc.data()?['balance'] ?? 0.0).toDouble();
-      final totalAmount = _calculateTotalValue();
-
-      // Se não há valor para pagar, agendar normalmente
-      if (totalAmount <= 0) {
-        await _proceedWithSchedulingAndGetId();
-        return;
-      }
-
-      // Se há saldo, mostrar pop-up de uso do saldo
-      if (currentBalance > 0) {
-        setState(() => _isLoading = false);
-        await _showBalanceUsageDialog(currentBalance, totalAmount);
-      } else {
-        // Se não há saldo, agendar normalmente
-        await _proceedWithSchedulingAndGetId();
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao verificar saldo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _showBalanceUsageDialog(
-      double currentBalance, double totalAmount) async {
-    // Inicializar o controller com o valor máximo disponível (não pode exceder o valor total)
-    final maxBalanceToUse =
-        currentBalance > totalAmount ? totalAmount : currentBalance;
-    _balanceAmountController.text = maxBalanceToUse.toStringAsFixed(2);
-
-    final remainingAmount = totalAmount - currentBalance;
-    final finalBalance =
-        remainingAmount > 0 ? 0.0 : (currentBalance - totalAmount);
-
-    return showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.account_balance_wallet,
-              color: _mainColor,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Usar Saldo Disponível',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Você tem saldo disponível! Quanto deseja usar para este agendamento?',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Campo para editar valor do saldo
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue[200]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Valor do saldo a usar:',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.blue[700],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _balanceAmountController,
-                      keyboardType:
-                          TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        prefixText: 'R\$ ',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        hintText: '0,00',
-                        suffixText:
-                            'de R\$ ${(currentBalance > totalAmount ? totalAmount : currentBalance).toStringAsFixed(2)}',
-                        suffixStyle: GoogleFonts.poppins(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(
-                            RegExp(r'^\d*\.?\d{0,2}')),
-                        // Limitar o valor máximo que pode ser digitado
-                        TextInputFormatter.withFunction((oldValue, newValue) {
-                          final newValueText = newValue.text;
-                          if (newValueText.isEmpty) return newValue;
-                          
-                          final newValueDouble = double.tryParse(newValueText);
-                          if (newValueDouble == null) return oldValue;
-                          
-                          // Limitar ao valor máximo (mínimo entre saldo e valor total)
-                          final maxValue = currentBalance > totalAmount ? totalAmount : currentBalance;
-                          if (newValueDouble > maxValue) {
-                            return TextEditingValue(
-                              text: maxValue.toStringAsFixed(2),
-                              selection: TextSelection.collapsed(offset: maxValue.toStringAsFixed(2).length),
-                            );
-                          }
-                          
-                          return newValue;
-                        }),
-                      ],
-                      onChanged: (value) {
-                        setState(() {});
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Card de informações
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[50],
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey[300]!),
-                ),
-                child: Builder(
-                  builder: (context) {
-                    // Calcular valores baseados no input do usuário
-                    final balanceToUse =
-                        double.tryParse(_balanceAmountController.text) ?? 0.0;
-                    final clampedBalance =
-                        balanceToUse.clamp(0.0, currentBalance);
-                    final actualRemainingAmount = totalAmount - clampedBalance;
-                    final actualFinalBalance = currentBalance - clampedBalance;
-
-                    return Column(
-                      children: [
-                        // Valor total do serviço
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Valor do serviço:',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              'R\$ ${totalAmount.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Saldo a usar
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Saldo a usar:',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.blue[700],
-                              ),
-                            ),
-                            Text(
-                              'R\$ ${clampedBalance.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue[700],
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Saldo restante
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Saldo restante:',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              'R\$ ${actualFinalBalance.toStringAsFixed(2)}',
-                              style: GoogleFonts.poppins(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green[700],
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Divider(height: 20),
-
-                        // Resultado
-                        if (actualRemainingAmount > 0) ...[
-                          // Precisa pagar mais
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Valor restante:',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.orange[700],
-                                ),
-                              ),
-                              Text(
-                                'R\$ ${actualRemainingAmount.toStringAsFixed(2)}',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.orange[700],
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ] else ...[
-                          // Saldo cobre tudo
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'Pagamento completo!',
-                                style: GoogleFonts.poppins(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green[700],
-                                ),
-                              ),
-                              Icon(
-                                Icons.check_circle,
-                                color: Colors.green[700],
-                                size: 20,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop();
-              await _proceedWithSchedulingAndGetId();
-            },
-            child: Text(
-              'Não usar saldo',
-              style: GoogleFonts.poppins(
-                color: Colors.grey[600],
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final balanceToUse =
-                  double.tryParse(_balanceAmountController.text) ?? 0.0;
-              if (balanceToUse <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Por favor, insira um valor válido para usar do saldo.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              Navigator.of(context).pop();
-              await _scheduleWithBalance(currentBalance, totalAmount);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _mainColor,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              'Usar saldo',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _scheduleWithBalance(
-      double currentBalance, double totalAmount) async {
-    setState(() => _isLoading = true);
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
-
-      // Obter o valor que o usuário quer usar do saldo
-      final balanceToUse =
-          double.tryParse(_balanceAmountController.text) ?? 0.0;
-      // Limitar o valor usado ao mínimo entre saldo disponível e valor total do serviço
-      final clampedBalance = balanceToUse.clamp(
-          0.0, currentBalance > totalAmount ? totalAmount : currentBalance);
-      final remainingAmount = totalAmount - clampedBalance;
-
-      // Agendar o serviço e obter o ID do agendamento
-      final appointmentId = await _proceedWithSchedulingAndGetId();
-
-      // Se ainda há valor para pagar, ir para tela de pagamento
-      if (remainingAmount > 0 && appointmentId != null) {
-        if (mounted) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PaymentScreen(
-                amount: remainingAmount,
-                serviceTitle: _serviceTitles,
-                serviceDescription: widget.services
-                    .map((s) => s['description'] as String)
-                    .join(', '),
-                carId: _selectedCar!['id'],
-                carModel: _selectedCar!['model'],
-                carPlate: _selectedCar!['plate'],
-                appointmentId: appointmentId,
-                balanceToUse:
-                    clampedBalance, // Passar valor do saldo para a tela de pagamento
-              ),
-            ),
-          );
-        }
-      } else if (appointmentId != null) {
-        // Se não há valor restante, processar o pagamento completo com saldo
-        await _processBalancePayment(clampedBalance, appointmentId);
-        if (mounted) {
-          _showSuccessDialog();
-        }
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao usar saldo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _processBalancePayment(
-      double balanceToUse, String appointmentId) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
-
-      final currentBalance = (await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .get())
-              .data()?['balance'] ??
-          0.0;
-
-      final finalBalance = currentBalance - balanceToUse;
-
-      // Atualizar saldo do usuário
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({'balance': finalBalance});
-
-      // Registrar transação de débito
-      await FirebaseFirestore.instance.collection('transactions').add({
-        'userId': user.uid,
-        'amount': balanceToUse,
-        'type': 'debit',
-        'description': 'Pagamento de agendamento - $_serviceTitles',
-        'appointmentId': appointmentId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // Atualizar status do agendamento para confirmado
-      await FirebaseFirestore.instance
-          .collection('appointments')
-          .doc(appointmentId)
-          .update({'status': 'confirmed'});
-    } catch (e) {
-      throw Exception('Erro ao processar pagamento com saldo: $e');
-    }
-  }
-
-  Future<String?> _proceedWithSchedulingAndGetId() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Usuário não autenticado');
@@ -930,11 +400,123 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           );
         } else {
           // Mostrar dialog de sucesso para serviços sem valor
-          _showSuccessDialog();
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(
+                    Icons.check_circle,
+                    color: Colors.green,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Agendamento Realizado!',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Seu agendamento foi realizado com sucesso!',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green[200]!),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Detalhes do Agendamento:',
+                            style: GoogleFonts.poppins(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• Serviços: $_serviceTitles',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            overflow: TextOverflow.visible,
+                          ),
+                          Text(
+                            '• Data: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                          Text(
+                            '• Horário: $_selectedTime',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                          Text(
+                            '• Carro: ${_selectedCar!['model']} - ${_selectedCar!['plate']}',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                            overflow: TextOverflow.visible,
+                          ),
+                          Text(
+                            '• Valor: Preço a combinar',
+                            style: GoogleFonts.poppins(fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Você pode acompanhar o status do seu agendamento na página "Meus Agendamentos".',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Fechar dialog
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            HomeScreen(authService: widget.authService),
+                      ),
+                      (route) => false, // Remove todas as rotas anteriores
+                    );
+                  },
+                  child: Text(
+                    'Voltar ao Início',
+                    style: GoogleFonts.poppins(
+                      fontWeight: FontWeight.bold,
+                      color: _mainColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
         }
       }
-
-      return docRef.id;
     } catch (e) {
       debugPrint('Error scheduling service: $e');
       if (mounted) {
@@ -950,126 +532,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         setState(() => _isLoading = false);
       }
     }
-
-    return null;
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Icon(
-              Icons.check_circle,
-              color: Colors.green,
-              size: 28,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Agendamento Realizado!',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Seu agendamento foi realizado com sucesso!',
-                style: GoogleFonts.poppins(
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Detalhes do Agendamento:',
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[700],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '• Serviços: $_serviceTitles',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                      overflow: TextOverflow.visible,
-                    ),
-                    Text(
-                      '• Data: ${DateFormat('dd/MM/yyyy').format(_selectedDate)}',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                    ),
-                    Text(
-                      '• Horário: $_selectedTime',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                    ),
-                    Text(
-                      '• Carro: ${_selectedCar!['model']} - ${_selectedCar!['plate']}',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                      overflow: TextOverflow.visible,
-                    ),
-                    Text(
-                      '• Valor: Preço a combinar',
-                      style: GoogleFonts.poppins(fontSize: 14),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Você pode acompanhar o status do seu agendamento na página "Meus Agendamentos".',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.black54,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(); // Fechar dialog
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (context) =>
-                      HomeScreen(authService: widget.authService),
-                ),
-                (route) => false, // Remove todas as rotas anteriores
-              );
-            },
-            child: Text(
-              'Voltar ao Início',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                color: _mainColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -1435,8 +897,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              _dateFormat?.format(_selectedDate) ??
-                                  '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
+                              _dateFormat.format(_selectedDate),
                               style: GoogleFonts.poppins(fontSize: 16),
                             ),
                             Icon(
@@ -1456,103 +917,66 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    if (_timeSlots.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              size: 48,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Nenhum horário disponível',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Para esta data não há horários cadastrados no sistema.\nSelecione outra data ou entre em contato conosco.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          childAspectRatio: 2,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                        itemCount: _timeSlots.length,
-                        itemBuilder: (context, index) {
-                          final timeSlot = _timeSlots[index];
-                          final isSelected = timeSlot == _selectedTime;
-                          final slotTime = DateTime(
-                            _selectedDate.year,
-                            _selectedDate.month,
-                            _selectedDate.day,
-                            int.parse(timeSlot.split(':')[0]),
-                            int.parse(timeSlot.split(':')[1]),
-                          );
-                          final isAvailable =
-                              _isBlockAvailable(slotTime, _bookedTimeSlots);
-                          if (!isAvailable) return const SizedBox.shrink();
-                          return Tooltip(
-                            message: 'Disponível',
-                            child: InkWell(
-                              onTap: () {
-                                setState(() {
-                                  _selectedTime = timeSlot;
-                                });
-                              },
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: isSelected ? _mainColor : Colors.white,
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? _mainColor
-                                        : Colors.grey.shade300,
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    timeSlot,
-                                    style: GoogleFonts.poppins(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : Colors.black87,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 4,
+                        childAspectRatio: 2,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
                       ),
+                      itemCount: _timeSlots.length,
+                      itemBuilder: (context, index) {
+                        final timeSlot = _timeSlots[index];
+                        final isSelected = timeSlot == _selectedTime;
+                        final slotTime = DateTime(
+                          _selectedDate.year,
+                          _selectedDate.month,
+                          _selectedDate.day,
+                          int.parse(timeSlot.split(':')[0]),
+                          int.parse(timeSlot.split(':')[1]),
+                        );
+                        final isAvailable =
+                            _isBlockAvailable(slotTime, _bookedTimeSlots);
+                        if (!isAvailable) return const SizedBox.shrink();
+                        return Tooltip(
+                          message: 'Disponível',
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedTime = timeSlot;
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: isSelected ? _mainColor : Colors.white,
+                                border: Border.all(
+                                  color: isSelected
+                                      ? _mainColor
+                                      : Colors.grey.shade300,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  timeSlot,
+                                  style: GoogleFonts.poppins(
+                                    color: isSelected
+                                        ? Colors.white
+                                        : Colors.black87,
+                                    fontWeight: isSelected
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
                     const SizedBox(height: 24),
                     // Seção de valor total
                     Container(
