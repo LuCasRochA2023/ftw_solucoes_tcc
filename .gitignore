@@ -42,6 +42,9 @@ app.*.map.json
 # Environment variables
 .env
 
+# Backend configuration
+lib/utils/backend_url.dart
+
 
 # Android Studio will place build artifacts here
 /android/app/debug

@@ -278,8 +278,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao carregar horários : $e');
+      setState(() => _isLoading = false);
       if (mounted) {
-        setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao carregar horários: $e'),
@@ -358,14 +358,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
         // Mostrar mensagem se não há horários disponíveis
         if (_timeSlots.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  'Nenhum horário disponível para ${_dateFormat?.format(picked) ?? 'esta data'}'),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Nenhum horário disponível para ${_dateFormat?.format(picked) ?? 'esta data'}'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
         }
       }
     }
@@ -428,12 +430,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao verificar saldo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao verificar saldo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -443,10 +447,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     final maxBalanceToUse =
         currentBalance > totalAmount ? totalAmount : currentBalance;
     _balanceAmountController.text = maxBalanceToUse.toStringAsFixed(2);
-
-    final remainingAmount = totalAmount - currentBalance;
-    final finalBalance =
-        remainingAmount > 0 ? 0.0 : (currentBalance - totalAmount);
 
     return showDialog(
       context: context,
@@ -509,7 +509,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                     TextFormField(
                       controller: _balanceAmountController,
                       keyboardType:
-                          TextInputType.numberWithOptions(decimal: true),
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: InputDecoration(
                         prefixText: 'R\$ ',
                         border: OutlineInputBorder(
@@ -532,19 +532,22 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                         TextInputFormatter.withFunction((oldValue, newValue) {
                           final newValueText = newValue.text;
                           if (newValueText.isEmpty) return newValue;
-                          
+
                           final newValueDouble = double.tryParse(newValueText);
                           if (newValueDouble == null) return oldValue;
-                          
+
                           // Limitar ao valor máximo (mínimo entre saldo e valor total)
-                          final maxValue = currentBalance > totalAmount ? totalAmount : currentBalance;
+                          final maxValue = currentBalance > totalAmount
+                              ? totalAmount
+                              : currentBalance;
                           if (newValueDouble > maxValue) {
                             return TextEditingValue(
                               text: maxValue.toStringAsFixed(2),
-                              selection: TextSelection.collapsed(offset: maxValue.toStringAsFixed(2).length),
+                              selection: TextSelection.collapsed(
+                                  offset: maxValue.toStringAsFixed(2).length),
                             );
                           }
-                          
+
                           return newValue;
                         }),
                       ],
@@ -790,12 +793,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao usar saldo: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao usar saldo: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -964,7 +969,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         ),
         title: Row(
           children: [
-            Icon(
+            const Icon(
               Icons.check_circle,
               color: Colors.green,
               size: 28,
@@ -1313,7 +1318,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 children: [
                                   Radio<String>(
                                     value: 'carnauba',
+                                    // ignore: deprecated_member_use
                                     groupValue: _selectedCera,
+                                    // ignore: deprecated_member_use
                                     onChanged: (String? value) {
                                       setState(() {
                                         _selectedCera = value;
@@ -1348,7 +1355,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 children: [
                                   Radio<String>(
                                     value: 'jetcera',
+                                    // ignore: deprecated_member_use
                                     groupValue: _selectedCera,
+                                    // ignore: deprecated_member_use
                                     onChanged: (String? value) {
                                       setState(() {
                                         _selectedCera = value;
@@ -1383,15 +1392,23 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: _mainColor.withOpacity(0.1),
+                                  color: Color.fromRGBO(
+                                      (_mainColor.r * 255).round(),
+                                      (_mainColor.g * 255).round(),
+                                      (_mainColor.b * 255).round(),
+                                      0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: _mainColor.withOpacity(0.3),
+                                    color: Color.fromRGBO(
+                                        (_mainColor.r * 255).round(),
+                                        (_mainColor.g * 255).round(),
+                                        (_mainColor.b * 255).round(),
+                                        0.3),
                                   ),
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(
+                                    const Icon(
                                       Icons.info_outline,
                                       color: Colors.orange,
                                       size: 20,
@@ -1558,10 +1575,18 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: _mainColor.withOpacity(0.1),
+                        color: Color.fromRGBO(
+                            (_mainColor.r * 255).round(),
+                            (_mainColor.g * 255).round(),
+                            (_mainColor.b * 255).round(),
+                            0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _mainColor.withOpacity(0.3),
+                          color: Color.fromRGBO(
+                              (_mainColor.r * 255).round(),
+                              (_mainColor.g * 255).round(),
+                              (_mainColor.b * 255).round(),
+                              0.3),
                         ),
                       ),
                       child: Column(
@@ -1598,7 +1623,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               ),
                               child: Row(
                                 children: [
-                                  Icon(
+                                  const Icon(
                                     Icons.info_outline,
                                     color: Colors.orange,
                                     size: 20,

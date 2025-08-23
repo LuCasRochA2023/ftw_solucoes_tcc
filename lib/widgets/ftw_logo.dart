@@ -22,8 +22,8 @@ class FTWLogo extends StatelessWidget {
         shape: BoxShape.circle,
         boxShadow: showShadow
             ? [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.3),
+                const BoxShadow(
+                  color: Color.fromRGBO(33, 150, 243, 0.3),
                   blurRadius: 15,
                   spreadRadius: 3,
                 ),
@@ -127,4 +127,4 @@ class FTWLogo extends StatelessWidget {
       ),
     );
   }
-} 
+}

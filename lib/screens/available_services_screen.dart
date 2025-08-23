@@ -23,7 +23,6 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
   final Set<int> _selectedIndexes = {};
   bool _isLoadingDistance = false;
   bool _levaETrazAvailable = true; // Por padrão, disponível
-  Map<String, dynamic>? _userAddress;
 
   @override
   void initState() {
@@ -49,9 +48,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           final address = userData['address'] as Map<String, dynamic>?;
 
           if (address != null) {
-            setState(() {
-              _userAddress = address;
-            });
+            setState(() {});
 
             // Verificar se está dentro da área de cobertura
             final isWithinCoverage =
@@ -61,13 +58,13 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
               _levaETrazAvailable = isWithinCoverage;
             });
 
-            print(
+            debugPrint(
                 ' Serviço "Leva e Traz" ${isWithinCoverage ? 'disponível' : 'indisponível'} para este endereço');
           }
         }
       }
     } catch (e) {
-      print('Erro ao carregar endereço do usuário: $e');
+      debugPrint('Erro ao carregar endereço do usuário: $e');
       // Em caso de erro, mantém o serviço disponível por padrão
     } finally {
       setState(() {
@@ -329,7 +326,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.info_outline,
                         color: Colors.orange,
                         size: 16,
@@ -739,7 +736,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           if (_isLoadingDistance)
             Container(
               padding: const EdgeInsets.all(16),
-              color: Colors.blue.withOpacity(0.1),
+              color: const Color.fromRGBO(33, 150, 243, 0.1),
               child: Row(
                 children: [
                   const SizedBox(
@@ -796,7 +793,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                         // Ícone "Saiba mais"
                         IconButton(
                           onPressed: () => _showServiceDetails(service),
-                          icon: Icon(
+                          icon: const Icon(
                             Icons.info_outline,
                             color: Colors.orange,
                             size: 20,
@@ -890,7 +887,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(
+                  shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.zero,
                   ),
                 ),

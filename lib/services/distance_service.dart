@@ -1,6 +1,6 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
-import 'package:geolocator/geolocator.dart';
 
 class DistanceService {
   // Coordenadas do estacionamento/lavagem (Porto Alegre, RS)
@@ -20,7 +20,7 @@ class DistanceService {
           await _getCoordinatesFromAddress(userAddressString);
 
       if (userCoordinates == null) {
-        print('Não foi possível obter coordenadas do endereço do usuário');
+        debugPrint('Não foi possível obter coordenadas do endereço do usuário');
         return null;
       }
 
@@ -32,10 +32,10 @@ class DistanceService {
         _lavagemLongitude,
       );
 
-      print('Distância calculada: ${distance.toStringAsFixed(2)} km');
+      debugPrint('Distância calculada: ${distance.toStringAsFixed(2)} km');
       return distance;
     } catch (e) {
-      print('Erro ao calcular distância: $e');
+      debugPrint('Erro ao calcular distância: $e');
       return null;
     }
   }
@@ -46,13 +46,13 @@ class DistanceService {
     final distance = await calculateDistanceFromUserAddress(userAddress);
 
     if (distance == null) {
-      print(
+      debugPrint(
           'Não foi possível calcular distância, permitindo serviço por padrão');
       return true; // Por padrão, permite o serviço se não conseguir calcular
     }
 
     final isWithin = distance <= 4.0;
-    print(
+    debugPrint(
         'Endereço está ${isWithin ? 'dentro' : 'fora'} da área de cobertura (${distance.toStringAsFixed(2)} km)');
     return isWithin;
   }
@@ -85,7 +85,7 @@ class DistanceService {
 
       return null;
     } catch (e) {
-      print('Erro ao obter coordenadas do endereço: $e');
+      debugPrint('Erro ao obter coordenadas do endereço: $e');
       return null;
     }
   }

@@ -48,8 +48,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   int _selectedTab = 0; // 0 = Pix, 1 = Cartão
   bool _isInitialized = false; // Flag para evitar inicialização duplicada
   bool _isDisposed = false; // Flag para controlar se a tela foi descartada
-  bool _isCancelling = false; // Flag para evitar cancelamento múltiplo
-  bool _balanceRefunded = false; // Flag para evitar devolução múltipla do saldo
 
   // Campos do formulário de cartão
   final _cardNumberController = TextEditingController();
@@ -81,26 +79,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
-    print('=== DEBUG: PaymentScreen initState ===');
-    _balanceRefunded =
-        false; // Garantir que a flag seja inicializada como false
+    debugPrint('=== DEBUG: PaymentScreen initState ===');
     // Inicializar imediatamente sem delay
     _initializePayment();
   }
 
   Future<void> _initializePayment() async {
     if (_isInitialized) {
-      print('=== DEBUG: Pagamento já inicializado, pulando... ===');
+      debugPrint('=== DEBUG: Pagamento já inicializado, pulando... ===');
       return;
     }
 
-    print('=== DEBUG: Inicializando pagamento ===');
+    debugPrint('=== DEBUG: Inicializando pagamento ===');
     _isInitialized = true;
 
     // Primeiro carregar o CPF, depois criar o pagamento
     await _loadUserCpf();
     await _criarPagamentoPix();
-    print('=== DEBUG: Inicialização concluída ===');
+    debugPrint('=== DEBUG: Inicialização concluída ===');
   }
 
   @override
@@ -115,11 +111,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _loadUserCpf() async {
-    print('=== DEBUG: Carregando CPF do usuário ===');
+    debugPrint('=== DEBUG: Carregando CPF do usuário ===');
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        print('Usuário autenticado: ${user.uid}');
+        debugPrint('Usuário autenticado: ${user.uid}');
 
         // Usar timeout mais curto para carregamento mais rápido
         final userDoc = await FirebaseFirestore.instance
@@ -130,36 +126,36 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
-          print('Dados do usuário: $data');
+          debugPrint('Dados do usuário: $data');
           final cpf = data['cpf'] ?? '';
 
           if (cpf.isNotEmpty) {
             setState(() {
               _userCpf = cpf;
             });
-            print('CPF carregado do perfil: $cpf');
-            print('CPF limpo: ${cpf.replaceAll(RegExp(r'[^\d]'), '')}');
-            print('CPF armazenado em _userCpf: $_userCpf');
+            debugPrint('CPF carregado do perfil: $cpf');
+            debugPrint('CPF limpo: ${cpf.replaceAll(RegExp(r'[^\d]'), '')}');
+            debugPrint('CPF armazenado em _userCpf: $_userCpf');
           } else {
-            print('CPF não encontrado no perfil do usuário');
+            debugPrint('CPF não encontrado no perfil do usuário');
             setState(() {
               _userCpf = null;
             });
           }
         } else {
-          print('Documento do usuário não encontrado');
+          debugPrint('Documento do usuário não encontrado');
           setState(() {
             _userCpf = null;
           });
         }
       } else {
-        print('Usuário não autenticado');
+        debugPrint('Usuário não autenticado');
         setState(() {
           _userCpf = null;
         });
       }
     } catch (e) {
-      print('Erro ao carregar CPF do usuário: $e');
+      debugPrint('Erro ao carregar CPF do usuário: $e');
       setState(() {
         _userCpf = null;
       });
@@ -168,23 +164,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _criarPagamentoPix() async {
     if (_isProcessing) {
-      print('=== DEBUG: Pagamento PIX já em processamento, pulando... ===');
+      debugPrint(
+          '=== DEBUG: Pagamento PIX já em processamento, pulando... ===');
       return;
     }
 
-    print('=== DEBUG: Definindo _isProcessing como true ===');
+    debugPrint('=== DEBUG: Definindo _isProcessing como true ===');
     setState(() {
       _isProcessing = true;
       _errorMessage = null;
     });
 
     try {
-      print('=== DEBUG: Iniciando criação de pagamento PIX ===');
-      print('BackendUrl.baseUrl: ${BackendUrl.baseUrl}');
-      print(
+      debugPrint('=== DEBUG: Iniciando criação de pagamento PIX ===');
+      debugPrint('BackendUrl.baseUrl: ${BackendUrl.baseUrl}');
+      debugPrint(
           'EnvironmentConfig.activeBackendUrl: ${EnvironmentConfig.activeBackendUrl}');
-      print('URL completa: ${BackendUrl.baseUrl}/create-payment');
-      print('CPF atual: $_userCpf');
+      debugPrint('URL completa: ${BackendUrl.baseUrl}/create-payment');
+      debugPrint('CPF atual: $_userCpf');
 
       // Usar dados do usuário logado se disponível
       final user = FirebaseAuth.instance.currentUser;
@@ -207,14 +204,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final cleanCpf = _userCpf!.replaceAll(RegExp(r'[^\d]'), '');
         if (cleanCpf.length == 11) {
           userCpf = cleanCpf;
-          print('Usando CPF do perfil: $userCpf');
+          debugPrint('Usando CPF do perfil: $userCpf');
         } else {
-          print('CPF do perfil inválido: $_userCpf (limpo: $cleanCpf)');
-          print('Usando CPF de teste: $userCpf');
+          debugPrint('CPF do perfil inválido: $_userCpf (limpo: $cleanCpf)');
+          debugPrint('Usando CPF de teste: $userCpf');
         }
       } else {
-        print('CPF não encontrado no perfil, usando CPF de teste: $userCpf');
-        print('Dica: Atualize seu perfil para usar seu CPF real');
+        debugPrint(
+            'CPF não encontrado no perfil, usando CPF de teste: $userCpf');
+        debugPrint('Dica: Atualize seu perfil para usar seu CPF real');
       }
 
       final headers = {
@@ -232,12 +230,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
           'cpf': userCpf,
         }
       };
-      print('Body: ${jsonEncode(requestBody)}');
+      debugPrint('Body: ${jsonEncode(requestBody)}');
 
-      print('=== DEBUG: Enviando requisição para o backend ===');
-      print('URL final: ${BackendUrl.baseUrl}/create-payment');
-      print('Headers: $headers');
-      print('Body: ${jsonEncode(requestBody)}');
+      debugPrint('=== DEBUG: Enviando requisição para o backend ===');
+      debugPrint('URL final: ${BackendUrl.baseUrl}/create-payment');
+      debugPrint('Headers: $headers');
+      debugPrint('Body: ${jsonEncode(requestBody)}');
 
       final response = await http
           .post(
@@ -247,28 +245,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
           )
           .timeout(const Duration(seconds: 30));
 
-      print('=== DEBUG: Resposta recebida ===');
-      print('Status Code: ${response.statusCode}');
-      print('Response Headers: ${response.headers}');
-      print('Response Body: ${response.body}');
+      debugPrint('=== DEBUG: Resposta recebida ===');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Response Headers: ${response.headers}');
+      debugPrint('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Resposta do backend:');
-        print(data);
+        debugPrint('Resposta do backend:');
+        debugPrint(data);
         final qr =
             data['point_of_interaction']?['transaction_data']?['qr_code'];
-        print('QR recebido: $qr');
+        debugPrint('QR recebido: $qr');
 
         if (qr != null && qr.isNotEmpty) {
-          print('=== DEBUG: Definindo _isProcessing como false (sucesso) ===');
+          debugPrint(
+              '=== DEBUG: Definindo _isProcessing como false (sucesso) ===');
           setState(() {
             _pixQrCode = qr;
             _paymentId = data['id'].toString();
             _isProcessing = false;
           });
           _startStatusPolling();
-          print('✅ QR Code gerado com sucesso!');
+          debugPrint('QR Code gerado com sucesso!');
         } else {
           throw Exception('QR Code não foi gerado pelo backend');
         }
@@ -315,7 +314,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 'Erro inesperado. Tente novamente ou entre em contato com o suporte.';
         }
 
-        print('=== DEBUG: Definindo _isProcessing como false (erro) ===');
+        debugPrint('=== DEBUG: Definindo _isProcessing como false (erro) ===');
         setState(() {
           _errorMessage = userFriendlyMessage;
           _isProcessing = false;
@@ -324,9 +323,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _showRetryButton();
       }
     } catch (e) {
-      print('=== DEBUG: Erro na requisição ===');
-      print('Erro: $e');
-      print('=== DEBUG: Definindo _isProcessing como false (exceção) ===');
+      debugPrint('=== DEBUG: Erro na requisição ===');
+      debugPrint('Erro: $e');
+      debugPrint('=== DEBUG: Definindo _isProcessing como false (exceção) ===');
 
       String userFriendlyMessage = 'Erro inesperado. Tente novamente.';
 
@@ -432,33 +431,33 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _onPaymentSuccess() async {
-    print('=== DEBUG: _onPaymentSuccess chamada ===');
-    print('balanceToUse: ${widget.balanceToUse}');
-    print('appointmentId: ${widget.appointmentId}');
-    print('isDisposed: $_isDisposed');
+    debugPrint('=== DEBUG: _onPaymentSuccess chamada ===');
+    debugPrint('balanceToUse: ${widget.balanceToUse}');
+    debugPrint('appointmentId: ${widget.appointmentId}');
+    debugPrint('isDisposed: $_isDisposed');
 
     // Verificar se a tela foi descartada antes de processar
     if (_isDisposed) {
-      print('=== DEBUG: Tela descartada, cancelando processamento ===');
+      debugPrint('=== DEBUG: Tela descartada, cancelando processamento ===');
       return;
     }
 
     try {
       // Se há saldo para usar, processar o pagamento com saldo
       if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
-        print('=== DEBUG: Processando pagamento com saldo ===');
+        debugPrint('=== DEBUG: Processando pagamento com saldo ===');
         await _processBalancePayment();
       }
 
       if (widget.appointmentId.isNotEmpty) {
-        print('=== DEBUG: Atualizando status do agendamento ===');
+        debugPrint('=== DEBUG: Atualizando status do agendamento ===');
         await FirebaseFirestore.instance
             .collection('appointments')
             .doc(widget.appointmentId)
             .update({'status': 'confirmed'});
       }
       if (mounted && !_isDisposed) {
-        print('=== DEBUG: Navegando para HomeScreen ===');
+        debugPrint('=== DEBUG: Navegando para HomeScreen ===');
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
@@ -469,7 +468,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
     } catch (e) {
-      print('Erro ao processar pagamento com saldo: $e');
+      debugPrint('Erro ao processar pagamento com saldo: $e');
     }
   }
 
@@ -507,141 +506,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  Future<void> _cancelAppointmentAndRefundBalance() async {
-    print('=== DEBUG: _cancelAppointmentAndRefundBalance chamada ===');
-    print('=== DEBUG: _isCancelling: $_isCancelling ===');
-    print('=== DEBUG: _balanceRefunded: $_balanceRefunded ===');
-
-    // Evitar execução múltipla
-    if (_isCancelling) {
-      print('=== DEBUG: Cancelamento já em andamento, pulando... ===');
-      return;
-    }
-
-    _isCancelling = true;
-    print('=== DEBUG: Iniciando cancelamento do agendamento ===');
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
-
-      // Cancelar agendamento
-      if (widget.appointmentId.isNotEmpty) {
-        print('=== DEBUG: Cancelando agendamento ${widget.appointmentId} ===');
-
-        // Verificar se já foi cancelado
-        final appointmentDoc = await FirebaseFirestore.instance
-            .collection('appointments')
-            .doc(widget.appointmentId)
-            .get();
-
-        if (appointmentDoc.exists &&
-            appointmentDoc.data()?['status'] != 'cancelled') {
-          await FirebaseFirestore.instance
-              .collection('appointments')
-              .doc(widget.appointmentId)
-              .update({'status': 'cancelled'});
-          print('=== DEBUG: Agendamento cancelado com sucesso ===');
-        } else {
-          print('=== DEBUG: Agendamento já estava cancelado ===');
-        }
-      }
-
-      // Se há saldo que foi usado, devolver (apenas uma vez)
-      print('=== DEBUG: Verificando condições para devolução ===');
-      print('=== DEBUG: balanceToUse: ${widget.balanceToUse} ===');
-      print('=== DEBUG: _balanceRefunded: $_balanceRefunded ===');
-
-      if (widget.balanceToUse != null &&
-          widget.balanceToUse! > 0 &&
-          !_balanceRefunded) {
-        print(
-            '=== DEBUG: Processando devolução de saldo R\$ ${widget.balanceToUse!.toStringAsFixed(2)} ===');
-
-        // Verificar se já existe uma transação de devolução para este agendamento
-        final existingRefund = await FirebaseFirestore.instance
-            .collection('transactions')
-            .where('userId', isEqualTo: user.uid)
-            .where('appointmentId', isEqualTo: widget.appointmentId)
-            .where('type', isEqualTo: 'credit')
-            .get();
-
-        if (existingRefund.docs.isNotEmpty) {
-          print('=== DEBUG: Devolução já foi processada anteriormente ===');
-          _balanceRefunded = true;
-        } else {
-          // Usar transação do Firestore para garantir atomicidade
-          await FirebaseFirestore.instance.runTransaction((transaction) async {
-            // Buscar documento do usuário
-            final userDoc = await transaction.get(
-                FirebaseFirestore.instance.collection('users').doc(user.uid));
-
-            final currentBalance =
-                (userDoc.data()?['balance'] ?? 0.0).toDouble();
-            final refundedBalance = currentBalance + widget.balanceToUse!;
-
-            print(
-                '=== DEBUG: Saldo atual: R\$ ${currentBalance.toStringAsFixed(2)} ===');
-            print(
-                '=== DEBUG: Saldo após devolução: R\$ ${refundedBalance.toStringAsFixed(2)} ===');
-
-            // Atualizar saldo do usuário
-            transaction.update(
-                FirebaseFirestore.instance.collection('users').doc(user.uid),
-                {'balance': refundedBalance});
-
-            // Registrar transação de crédito (devolução)
-            final transactionRef =
-                FirebaseFirestore.instance.collection('transactions').doc();
-            transaction.set(transactionRef, {
-              'userId': user.uid,
-              'amount': widget.balanceToUse!,
-              'type': 'credit',
-              'description':
-                  'Devolução - Cancelamento de agendamento - ${widget.serviceTitle}',
-              'appointmentId': widget.appointmentId,
-              'createdAt': FieldValue.serverTimestamp(),
-            });
-          });
-
-          _balanceRefunded = true;
-          print('=== DEBUG: Saldo devolvido com sucesso ===');
-        }
-      } else if (widget.balanceToUse != null &&
-          widget.balanceToUse! > 0 &&
-          _balanceRefunded) {
-        print('=== DEBUG: Saldo já foi devolvido nesta sessão ===');
-      }
-
-      print('=== DEBUG: Cancelamento concluído com sucesso ===');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              widget.balanceToUse != null && widget.balanceToUse! > 0
-                  ? 'Agendamento cancelado. R\$ ${widget.balanceToUse!.toStringAsFixed(2)} devolvido ao seu saldo.'
-                  : 'Agendamento cancelado.',
-            ),
-            backgroundColor: Colors.blue,
-          ),
-        );
-      }
-    } catch (e) {
-      print('Erro ao cancelar agendamento: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao cancelar agendamento: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      _isCancelling = false; // Reset flag
-    }
-  }
-
   static String get mpPublicKey => EnvironmentConfig.mercadopagoPublicKeyValue;
 
   Future<String?> gerarTokenCartao({
@@ -652,7 +516,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String cardholderName,
     required String cpf,
   }) async {
-    print('=== DEBUG: Gerando token do cartão ===');
+    debugPrint('=== DEBUG: Gerando token do cartão ===');
 
     final url = Uri.parse(
       'https://api.mercadopago.com/v1/card_tokens?public_key=$mpPublicKey',
@@ -662,15 +526,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final cleanCard = cardNumber.replaceAll(' ', '');
 
     if (cleanCpf.isEmpty) {
-      print('Erro: CPF não fornecido para tokenização');
+      debugPrint('Erro: CPF não fornecido para tokenização');
       return null;
     }
 
-    print('CPF para tokenização: $cleanCpf');
-    print('Nome do titular: $cardholderName');
-    print(
+    debugPrint('CPF para tokenização: $cleanCpf');
+    debugPrint('Nome do titular: $cardholderName');
+    debugPrint(
         'Número do cartão: ${cleanCard.substring(0, 4)}...${cleanCard.substring(cleanCard.length - 4)}');
-    print('Validade: $expirationMonth/$expirationYear');
+    debugPrint('Validade: $expirationMonth/$expirationYear');
 
     final requestBody = {
       'card_number': cleanCard,
@@ -688,12 +552,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
     };
 
-    print('Request Body para tokenização: ${jsonEncode(requestBody)}');
+    debugPrint('Request Body para tokenização: ${jsonEncode(requestBody)}');
 
-    print('=== DEBUG: Enviando requisição para Mercado Pago (tokenização) ===');
-    print('URL: $url');
-    print('Headers: ${jsonEncode({'Content-Type': 'application/json'})}');
-    print('Body: ${jsonEncode(requestBody)}');
+    debugPrint(
+        '=== DEBUG: Enviando requisição para Mercado Pago (tokenização) ===');
+    debugPrint('URL: $url');
+    debugPrint('Headers: ${jsonEncode({'Content-Type': 'application/json'})}');
+    debugPrint('Body: ${jsonEncode(requestBody)}');
 
     final response = await http.post(
       url,
@@ -701,26 +566,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: jsonEncode(requestBody),
     );
 
-    print('=== DEBUG: Resposta da tokenização ===');
-    print('Status Code: ${response.statusCode}');
-    print('Response Headers: ${response.headers}');
-    print('Response Body: ${response.body}');
+    debugPrint('=== DEBUG: Resposta da tokenização ===');
+    debugPrint('Status Code: ${response.statusCode}');
+    debugPrint('Response Headers: ${response.headers}');
+    debugPrint('Response Body: ${response.body}');
 
     if (response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      print('Token gerado com sucesso: ${data['id']}');
+      debugPrint('Token gerado com sucesso: ${data['id']}');
       return data['id'];
     } else {
       final errorData = jsonDecode(response.body);
-      print('Erro ao gerar token: ${jsonEncode(errorData)}');
+      debugPrint('Erro ao gerar token: ${jsonEncode(errorData)}');
       return null;
     }
   }
 
   Future<void> _checkPaymentStatus(String paymentId) async {
     try {
-      print('=== DEBUG: Verificando status do pagamento ===');
-      print('Payment ID: $paymentId');
+      debugPrint('=== DEBUG: Verificando status do pagamento ===');
+      debugPrint('Payment ID: $paymentId');
 
       final response = await http.get(
         Uri.parse('${BackendUrl.baseUrl}/payment-status/$paymentId'),
@@ -732,28 +597,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final status = data['status'] as String?;
         final statusDetail = data['status_detail'] as String?;
 
-        print('Status atualizado: $status - $statusDetail');
+        debugPrint('Status atualizado: $status - $statusDetail');
 
         if (status == 'approved') {
-          print('Pagamento aprovado!');
+          debugPrint('Pagamento aprovado!');
           await _onPaymentSuccess();
         } else if (status == 'in_process') {
-          print('⏳ Ainda em processamento...');
+          debugPrint('Ainda em processamento...');
           setState(() {
             _cardError =
                 'Pagamento ainda em processamento. Aguarde mais um pouco.';
           });
         } else if (status == 'rejected') {
-          print('Pagamento rejeitado');
+          debugPrint('Pagamento rejeitado');
           setState(() {
             _cardError = 'Pagamento rejeitado: $statusDetail';
           });
         }
       } else {
-        print('Erro ao verificar status: ${response.statusCode}');
+        debugPrint('Erro ao verificar status: ${response.statusCode}');
       }
     } catch (e) {
-      print('Erro ao verificar status do pagamento: $e');
+      debugPrint('Erro ao verificar status do pagamento: $e');
     }
   }
 
@@ -783,20 +648,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     ),
                     ElevatedButton(
                       onPressed: () async {
-                        print(
+                        debugPrint(
                             '=== DEBUG: Botão Voltar ao Início pressionado ===');
 
                         // Fechar dialog primeiro
                         Navigator.pop(context);
-                        print('=== DEBUG: Dialog fechado ===');
+                        debugPrint('=== DEBUG: Dialog fechado ===');
 
                         // Apenas voltar para tela inicial, sem cancelar agendamento
-                        print(
+                        debugPrint(
                             '=== DEBUG: Voltando para tela inicial sem cancelar ===');
 
                         // Voltar para tela inicial
                         if (mounted) {
-                          print(
+                          debugPrint(
                               '=== DEBUG: Tentando voltar para tela inicial ===');
                           Navigator.pushAndRemoveUntil(
                             navigatorContext,
@@ -807,7 +672,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             (route) =>
                                 false, // Remove todas as rotas anteriores
                           );
-                          print(
+                          debugPrint(
                               '=== DEBUG: Navegação para tela inicial executada ===');
                         }
                       },
@@ -964,7 +829,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _buildPixWidget() {
-    print(
+    debugPrint(
         '=== DEBUG: _buildPixWidget chamado - _isProcessing: $_isProcessing ===');
 
     return SingleChildScrollView(
@@ -1284,8 +1149,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ],
       ),
     );
-
-    ;
   }
 
   Widget _buildCreditCardWidget() {
@@ -1523,31 +1386,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   onPressed: _isCardProcessing
                       ? null
                       : () async {
-                          print(
+                          debugPrint(
                               '=== DEBUG: Botão de pagamento pressionado ===');
-                          print(
+                          debugPrint(
                               'Formulário válido: ${_formKey.currentState?.validate() ?? false}');
-                          print('CPF carregado: $_userCpf');
-                          print('Nome: ${_nameController.text}');
-                          print('Cartão: ${_cardNumberController.text}');
-                          print('Validade: ${_expiryController.text}');
-                          print('CVV: ${_cvvController.text}');
+                          debugPrint('CPF carregado: $_userCpf');
+                          debugPrint('Nome: ${_nameController.text}');
+                          debugPrint('Cartão: ${_cardNumberController.text}');
+                          debugPrint('Validade: ${_expiryController.text}');
+                          debugPrint('CVV: ${_cvvController.text}');
 
-                          print(
+                          debugPrint(
                               '=== DEBUG: Verificando validação do formulário ===');
                           final isValid =
                               _formKey.currentState?.validate() ?? false;
-                          print('Formulário válido: $isValid');
+                          debugPrint('Formulário válido: $isValid');
 
                           if (isValid) {
                             // Verificar se o CPF foi carregado
-                            print('=== DEBUG: Verificando CPF ===');
-                            print('CPF atual: $_userCpf');
+                            debugPrint('=== DEBUG: Verificando CPF ===');
+                            debugPrint('CPF atual: $_userCpf');
                             if (_userCpf == null || _userCpf!.isEmpty) {
-                              print(
+                              debugPrint(
                                   'CPF não carregado, tentando carregar novamente...');
                               await _loadUserCpf();
-                              print('CPF após recarregar: $_userCpf');
+                              debugPrint('CPF após recarregar: $_userCpf');
                               if (_userCpf == null || _userCpf!.isEmpty) {
                                 setState(() {
                                   _cardError =
@@ -1557,12 +1420,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               }
                             }
 
-                            print(
+                            debugPrint(
                                 '=== DEBUG: Verificando campos do formulário ===');
-                            print('Nome: "${_nameController.text}"');
-                            print('Cartão: "${_cardNumberController.text}"');
-                            print('Validade: "${_expiryController.text}"');
-                            print('CVV: "${_cvvController.text}"');
+                            debugPrint('Nome: "${_nameController.text}"');
+                            debugPrint(
+                                'Cartão: "${_cardNumberController.text}"');
+                            debugPrint('Validade: "${_expiryController.text}"');
+                            debugPrint('CVV: "${_cvvController.text}"');
 
                             setState(() {
                               _isCardProcessing = true;
@@ -1570,28 +1434,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               _cardSuccess = null;
                             });
                             final exp = _expiryController.text.split('/');
-                            print('Validade dividida: $exp');
+                            debugPrint('Validade dividida: $exp');
                             if (exp.length != 2) {
-                              print('Erro: Validade inválida');
+                              debugPrint('Erro: Validade inválida');
                               setState(() {
                                 _cardError = 'Validade inválida';
                                 _isCardProcessing = false;
                               });
                               return;
                             }
-                            print('CPF antes da tokenização: $_userCpf');
-                            print(
+                            debugPrint('CPF antes da tokenização: $_userCpf');
+                            debugPrint(
                                 'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
-                            print(
+                            debugPrint(
                                 'CPF é o de teste? ${_userCpf == '03557007197'}');
-                            print(
+                            debugPrint(
                                 'CPF limpo: ${_userCpf?.replaceAll(RegExp(r'[^\d]'), '')}');
-                            print('=== DEBUG: Antes de gerar token ===');
-                            print('CPF para tokenização: $_userCpf');
-                            print('Nome do titular: ${_nameController.text}');
-                            print(
+                            debugPrint('=== DEBUG: Antes de gerar token ===');
+                            debugPrint('CPF para tokenização: $_userCpf');
+                            debugPrint(
+                                'Nome do titular: ${_nameController.text}');
+                            debugPrint(
                                 'Número do cartão: ${_cardNumberController.text}');
-                            print('Validade: ${_expiryController.text}');
+                            debugPrint('Validade: ${_expiryController.text}');
 
                             final cardToken = await gerarTokenCartao(
                               cardNumber: _cardNumberController.text,
@@ -1601,10 +1466,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               cardholderName: _nameController.text,
                               cpf: _userCpf!, // Usar CPF do usuário
                             );
-                            print('=== DEBUG: Token gerado: $cardToken ===');
+                            debugPrint(
+                                '=== DEBUG: Token gerado: $cardToken ===');
                             if (cardToken != null) {
                               try {
-                                print('=== DEBUG: Chamando pagarComCartao ===');
+                                debugPrint(
+                                    '=== DEBUG: Chamando pagarComCartao ===');
                                 await pagarComCartao(cardToken);
                                 setState(() {
                                   _cardSuccess =
@@ -1636,82 +1503,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _buildAccountInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Flexible(
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-              textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Implementar lógica para gerar token do cartão
-  // Future<String?> _generateCardToken() async {
-  //   // Lógica para gerar token do cartão usando SDK do Mercado Pago
-  //   // Exemplo:
-  //   // try {
-  //   //   final response = await http.post(
-  //   //     Uri.parse('https://api.mercadopago.com/v1/card_tokens'),
-  //   //     headers: {
-  //   //       'Authorization': 'Bearer ${EnvironmentConfig.mercadopagoAccessTokenValue}',
-  //   //       'Content-Type': 'application/json',
-  //   //     },
-  //   //     body: jsonEncode({
-  //   //       'card_number': '4532 4567 8901 2345', // Número do cartão
-  //   //       'expiration_month': '12', // Mês de validade
-  //   //       'expiration_year': '25', // Ano de validade
-  //   //       'security_code': '123', // Código CVV
-  //   //       'cardholder': {
-  //   //         'name': 'Nome do Cartão',
-  //   //       },
-  //   //     }),
-  //   //   );
-  //   //   if (response.statusCode == 200) {
-  //   //     final data = jsonDecode(response.body);
-  //   //     return data['id'];
-  //   //   }
-  //   // } catch (e) {
-  //   //   print('Erro ao gerar token do cartão: $e');
-  //   // }
-  //   return null;
-  // }
-
-  // Implementar lógica para pagar com cartão
   Future<void> pagarComCartao(String cardToken) async {
-    print('=== DEBUG: Iniciando pagamento com cartão ===');
-    print('URL: ${BackendUrl.baseUrl}/create-creditcard-payment');
+    debugPrint('=== DEBUG: Iniciando pagamento com cartão ===');
+    debugPrint('URL: ${BackendUrl.baseUrl}/create-creditcard-payment');
 
     final headers = {
       'Content-Type': 'application/json',
       'x-idempotency-key': const Uuid().v4(),
     };
-    print('Headers: ${jsonEncode(headers)}');
+    debugPrint('Headers: ${jsonEncode(headers)}');
 
     // Usar CPF do usuário carregado do perfil
     final cleanCpf = _userCpf?.replaceAll(RegExp(r'[^\d]'), '') ?? '';
-    print('CPF para pagamento: $cleanCpf');
-    print('CPF original do perfil: $_userCpf');
+    debugPrint('CPF para pagamento: $cleanCpf');
+    debugPrint('CPF original do perfil: $_userCpf');
 
     if (cleanCpf.isEmpty) {
       setState(() {
@@ -1753,7 +1558,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
-    // Obter userId do Firebase Auth
     final user = FirebaseAuth.instance.currentUser;
     final userId = user?.uid ?? 'unknown';
 
@@ -1765,18 +1569,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'email': user?.email ?? 'email@gmail.com',
         'cpf': cleanCpf,
         'firstName': cardholderName.split(' ').first,
-        'lastName': cardholderName.split(' ').skip(1).join(' ') ?? 'Sobrenome',
+        'lastName': cardholderName.split(' ').skip(1).join(' '),
         'userId': userId,
       },
       'cardToken': cardToken,
       'cardNumber': cardNumber,
     };
-    print('Body: ${jsonEncode(requestBody)}');
+    debugPrint('Body: ${jsonEncode(requestBody)}');
 
-    print('=== DEBUG: Enviando requisição para o backend ===');
-    print('URL: ${BackendUrl.baseUrl}/create-payment');
-    print('Headers: ${jsonEncode(headers)}');
-    print('Body: ${jsonEncode(requestBody)}');
+    debugPrint('=== DEBUG: Enviando requisição para o backend ===');
+    debugPrint('URL: ${BackendUrl.baseUrl}/create-payment');
+    debugPrint('Headers: ${jsonEncode(headers)}');
+    debugPrint('Body: ${jsonEncode(requestBody)}');
 
     final response = await http.post(
       Uri.parse('${BackendUrl.baseUrl}/create-payment'),
@@ -1784,25 +1588,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: jsonEncode(requestBody),
     );
 
-    print('=== DEBUG: Resposta do pagamento com cartão ===');
-    print('Status Code: ${response.statusCode}');
-    print('Response Headers: ${response.headers}');
-    print('Response Body: ${response.body}');
+    debugPrint('=== DEBUG: Resposta do pagamento com cartão ===');
+    debugPrint('Status Code: ${response.statusCode}');
+    debugPrint('Response Headers: ${response.headers}');
+    debugPrint('Response Body: ${response.body}');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final status = data['status'] as String?;
       final statusDetail = data['status_detail'] as String?;
 
-      print('=== DEBUG: Status do pagamento ===');
-      print('Status: $status');
-      print('Status Detail: $statusDetail');
-      print('Payment ID: ${data['id']}');
+      debugPrint('=== DEBUG: Status do pagamento ===');
+      debugPrint('Status: $status');
+      debugPrint('Status Detail: $statusDetail');
+      debugPrint('Payment ID: ${data['id']}');
 
       if (status == 'approved') {
-        print('✅ Pagamento aprovado com sucesso!');
+        debugPrint('Pagamento aprovado com sucesso!');
         await _onPaymentSuccess();
       } else if (status == 'in_process') {
-        print('⏳ Pagamento em processamento');
+        debugPrint('Pagamento em processamento');
         setState(() {
           _cardError =
               'Pagamento em processamento. Aguarde a confirmação. Status: $statusDetail';
@@ -1811,7 +1615,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         await Future.delayed(const Duration(seconds: 3));
         await _checkPaymentStatus(data['id'].toString());
       } else if (status == 'rejected') {
-        print('❌ Pagamento rejeitado');
+        debugPrint('Pagamento rejeitado');
         setState(() {
           _cardError =
               'Pagamento rejeitado. Verifique os dados do cartão. Status: $statusDetail';

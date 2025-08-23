@@ -19,7 +19,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
   @override
   void initState() {
     super.initState();
-    print('=== DEBUG: ServicesScreen initState ===');
+    debugPrint('=== DEBUG: ServicesScreen initState ===');
     _loadServices();
   }
 
@@ -28,14 +28,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
     try {
       final services = await widget.authService.getServiceHistory();
-      print('=== DEBUG: Serviços carregados: ${services.length} ===');
+      debugPrint('=== DEBUG: Serviços carregados: ${services.length} ===');
       for (int i = 0; i < services.length; i++) {
-        print('=== DEBUG: Serviço $i: ${services[i]['title']} ===');
+        debugPrint('=== DEBUG: Serviço $i: ${services[i]['title']} ===');
       }
 
       // DADOS DE TESTE - FORÇAR DADOS PARA TESTE
       if (services.isEmpty) {
-        print(
+        debugPrint(
             '=== DEBUG: Nenhum serviço encontrado, usando dados de teste ===');
         final testServices = [
           {
@@ -48,7 +48,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
           {
             'title': 'Polimento',
             'description': 'Polimento e aplicação de cera',
-            'date': DateTime.now().subtract(Duration(days: 1)),
+            'date': DateTime.now().subtract(const Duration(days: 1)),
             'value': 120.0,
             'status': 'em andamento',
           },
@@ -64,7 +64,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
         });
       }
     } catch (e) {
-      print('=== DEBUG: Erro ao carregar serviços: $e ===');
+      debugPrint('=== DEBUG: Erro ao carregar serviços: $e ===');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
@@ -73,174 +73,13 @@ class _ServicesScreenState extends State<ServicesScreen> {
     }
   }
 
-  // Função para mostrar informações detalhadas do serviço
-  void _showServiceDetails(Map<String, dynamic> service) {
-    print(
-        '=== DEBUG: _showServiceDetails chamado para: ${service['title']} ===');
-    final serviceTitle = service['title'] ?? 'Serviço';
-    final serviceDescription =
-        service['description'] ?? 'Descrição não disponível';
-    final serviceDate = _formatDate(service['date']);
-    final serviceValue = _formatValue(service['value']);
-    final serviceStatus = _getStatusText(service['status']);
-    final serviceCar = service['car'] ?? 'Veículo não especificado';
-    final serviceTime = service['time'] ?? 'Horário não especificado';
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                Icons.info_outline,
-                color: Colors.orange,
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  serviceTitle,
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildInfoRow('Descrição:', serviceDescription),
-                const SizedBox(height: 12),
-                _buildInfoRow('Data:', serviceDate),
-                const SizedBox(height: 12),
-                _buildInfoRow('Horário:', serviceTime),
-                const SizedBox(height: 12),
-                _buildInfoRow('Veículo:', serviceCar),
-                const SizedBox(height: 12),
-                _buildInfoRow('Valor:', 'R\$ $serviceValue'),
-                const SizedBox(height: 12),
-                _buildInfoRow('Status:', serviceStatus),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue[200]!),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.lightbulb_outline,
-                            color: Colors.blue[600],
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Detalhes',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _getServiceTips(serviceTitle),
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: Colors.blue[600],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Fechar',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   // Widget para construir uma linha de informação
-  Widget _buildInfoRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.grey[700],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              color: Colors.black87,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   // Função para obter dicas específicas de cada serviço
-  String _getServiceTips(String serviceTitle) {
-    switch (serviceTitle.toLowerCase()) {
-      case 'lavagem':
-      case 'lavagem carro comum':
-      case 'lavagem caminhonete':
-        return '• Inclui lavagem externa e interna\n• Produtos de qualidade utilizados\n• Secagem completa incluída\n• Limpeza de vidros e rodas';
-      case 'espelhamento':
-        return '• Remove riscos superficiais\n• Restaura o brilho original\n• Proteção contra novos riscos\n• Aplicação de produtos especiais';
-      case 'polimento':
-        return '• Remove oxidação e manchas\n• Restaura cor original\n• Aplicação de cera protetora\n• Tratamento de pintura';
-      case 'higienização':
-        return '• Limpeza profunda do interior\n• Eliminação de odores\n• Tratamento de couro incluído\n• Aspiração completa';
-      case 'hidratação de couro':
-        return '• Nutrição do couro\n• Prevenção de rachaduras\n• Restauração da maciez\n• Proteção contra desgaste';
-      case 'leva e traz':
-        return '• Serviço de conveniência\n• Busca e entrega no local\n• Horário flexível\n• Economia de tempo\n• Segurança garantida';
-      default:
-        return '• Serviço personalizado\n• Qualidade garantida\n• Profissionais experientes\n• Satisfação do cliente\n• Garantia de qualidade';
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
-    print(
+    debugPrint(
         '=== DEBUG: ServicesScreen build - _isLoading: $_isLoading, _services.length: ${_services.length} ===');
     return Scaffold(
       appBar: AppBar(
@@ -279,10 +118,10 @@ class _ServicesScreenState extends State<ServicesScreen> {
                   itemCount: _services.length,
                   itemBuilder: (context, index) {
                     final service = _services[index];
-                    print(
+                    debugPrint(
                         '=== DEBUG: Renderizando serviço $index: ${service['title']} ===');
-                    print('=== DEBUG: Service data: $service ===');
-                    print(
+                    debugPrint('=== DEBUG: Service data: $service ===');
+                    debugPrint(
                         '=== DEBUG: Criando Container para serviço $index ===');
                     return Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -354,36 +193,6 @@ class _ServicesScreenState extends State<ServicesScreen> {
                   },
                 ),
     );
-  }
-
-  Color _getStatusColor(String? status) {
-    switch (status?.toLowerCase()) {
-      case 'pendente':
-        return Colors.orange;
-      case 'em andamento':
-        return Colors.blue;
-      case 'concluído':
-        return Colors.green;
-      case 'cancelado':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getStatusText(String? status) {
-    switch (status?.toLowerCase()) {
-      case 'pendente':
-        return 'Pendente';
-      case 'em andamento':
-        return 'Em Andamento';
-      case 'concluído':
-        return 'Concluído';
-      case 'cancelado':
-        return 'Cancelado';
-      default:
-        return 'Desconhecido';
-    }
   }
 
   String _formatDate(dynamic date) {

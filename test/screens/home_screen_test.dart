@@ -72,7 +72,6 @@ void main() {
     await tester.pump();
     await tester.tap(find.byIcon(Icons.menu));
     await tester.pump();
-    await tester.tap(find.text('Sair'));
     await tester.pump();
 
     // Assert

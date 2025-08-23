@@ -42,7 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _stateController = TextEditingController();
   final _firestore = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
-  Map<String, dynamic>? _userData;
 
   StreamSubscription<User?>? _authStateSubscription;
   bool _isImageLoading = false;
@@ -93,7 +92,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (doc.exists) {
           final userData = doc.data()!;
           setState(() {
-            _userData = userData;
             _nameController.text = userData['name'] ?? '';
             _cpfController.text = userData['cpf'] ?? '';
             _phoneController.text = userData['phone'] ?? '';
@@ -114,11 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             'email': user.email,
             'createdAt': FieldValue.serverTimestamp(),
           });
-          setState(() {
-            _userData = {
-              'email': user.email,
-            };
-          });
+          setState(() {});
         }
       }
     } catch (e) {
@@ -374,14 +368,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'state': _stateController.text,
       };
 
-      // Verificar se todos os campos obrigatórios do endereço estão preenchidos
-      if (address['cep']!.isEmpty || 
-          address['street']!.isEmpty || 
-          address['number']!.isEmpty || 
-          address['neighborhood']!.isEmpty || 
-          address['city']!.isEmpty || 
+      if (address['cep']!.isEmpty ||
+          address['street']!.isEmpty ||
+          address['number']!.isEmpty ||
+          address['neighborhood']!.isEmpty ||
+          address['city']!.isEmpty ||
           address['state']!.isEmpty) {
-        throw Exception('Por favor, preencha todos os campos obrigatórios do endereço');
+        throw Exception(
+            'Por favor, preencha todos os campos obrigatórios do endereço');
       }
 
       // Atualizar dados no Firestore

@@ -38,7 +38,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
   }
 
   Future<void> _loadAppointments() async {
-    print('=== DEBUG: Iniciando carregamento de agendamentos ===');
+    debugPrint('=== DEBUG: Iniciando carregamento de agendamentos ===');
     setState(() {
       _isLoading = true;
     });
@@ -49,7 +49,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         throw Exception('Usuário não autenticado');
       }
 
-      print('=== DEBUG: Usuário autenticado: ${user.uid} ===');
+      debugPrint('=== DEBUG: Usuário autenticado: ${user.uid} ===');
 
       // Primeiro tentar com orderBy, se falhar, buscar sem ordenação
       QuerySnapshot querySnapshot;
@@ -59,29 +59,29 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
             .where('userId', isEqualTo: user.uid)
             .orderBy('createdAt', descending: true)
             .get();
-        print('=== DEBUG: Consulta com orderBy executada com sucesso ===');
+        debugPrint('=== DEBUG: Consulta com orderBy executada com sucesso ===');
       } catch (e) {
-        print(
+        debugPrint(
             '=== DEBUG: Erro na consulta com orderBy, tentando sem ordenação: $e ===');
         querySnapshot = await _firestore
             .collection('appointments')
             .where('userId', isEqualTo: user.uid)
             .get();
-        print('=== DEBUG: Consulta sem orderBy executada com sucesso ===');
+        debugPrint('=== DEBUG: Consulta sem orderBy executada com sucesso ===');
       }
 
-      print(
+      debugPrint(
           '=== DEBUG: Consulta executada, documentos encontrados: ${querySnapshot.docs.length} ===');
 
       final appointments = querySnapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id;
-        print(
+        debugPrint(
             '=== DEBUG: Agendamento carregado: ${doc.id} - Status: ${data['status']} ===');
         return data;
       }).toList();
 
-      print(
+      debugPrint(
           '=== DEBUG: Total de agendamentos processados: ${appointments.length} ===');
 
       // Ordenar por createdAt se disponível, caso contrário por dateTime
@@ -108,10 +108,10 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         _isLoading = false;
       });
 
-      print(
+      debugPrint(
           '=== DEBUG: Estado atualizado, _appointments.length: ${_appointments.length} ===');
     } catch (e) {
-      print('=== DEBUG: Erro ao carregar agendamentos: $e ===');
+      debugPrint('=== DEBUG: Erro ao carregar agendamentos: $e ===');
       if (mounted) {
         setState(() {
           _error = 'Erro ao carregar histórico: $e';
@@ -390,7 +390,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(
+    debugPrint(
         '=== DEBUG: Build executado - _isLoading: $_isLoading, _appointments.length: ${_appointments.length}, _error: $_error ===');
     return Scaffold(
       appBar: AppBar(
@@ -489,7 +489,11 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: statusColor.withOpacity(0.1),
+                                    color: Color.fromRGBO(
+                                        (statusColor.r * 255).round(),
+                                        (statusColor.g * 255).round(),
+                                        (statusColor.b * 255).round(),
+                                        0.1),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Row(

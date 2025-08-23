@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -76,15 +75,15 @@ class _SplashScreenState extends State<SplashScreen>
             child: Container(
               width: 300,
               height: 300,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: RadialGradient(
                   colors: [
-                    Colors.blue.withOpacity(0.2),
-                    Colors.blue.withOpacity(0.1),
-                    Colors.white.withOpacity(0),
+                    Color.fromRGBO(33, 150, 243, 0.2),
+                    Color.fromRGBO(33, 150, 243, 0.1),
+                    Color.fromRGBO(255, 255, 255, 0),
                   ],
-                  stops: const [0.2, 0.5, 1.0],
+                  stops: [0.2, 0.5, 1.0],
                 ),
               ),
             ),

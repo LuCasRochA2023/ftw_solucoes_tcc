@@ -24,7 +24,9 @@ class ThemeScreen extends StatelessWidget {
                 leading: const Icon(Icons.light_mode),
                 trailing: Radio<ThemeMode>(
                   value: ThemeMode.light,
+                  // ignore: deprecated_member_use
                   groupValue: themeProvider.themeMode,
+                  // ignore: deprecated_member_use
                   onChanged: (ThemeMode? value) {
                     if (value != null) {
                       themeProvider.setThemeMode(value);
@@ -37,7 +39,9 @@ class ThemeScreen extends StatelessWidget {
                 leading: const Icon(Icons.dark_mode),
                 trailing: Radio<ThemeMode>(
                   value: ThemeMode.dark,
+                  // ignore: deprecated_member_use
                   groupValue: themeProvider.themeMode,
+                  // ignore: deprecated_member_use
                   onChanged: (ThemeMode? value) {
                     if (value != null) {
                       themeProvider.setThemeMode(value);
@@ -50,7 +54,9 @@ class ThemeScreen extends StatelessWidget {
                 leading: const Icon(Icons.settings_suggest),
                 trailing: Radio<ThemeMode>(
                   value: ThemeMode.system,
+                  // ignore: deprecated_member_use
                   groupValue: themeProvider.themeMode,
+                  // ignore: deprecated_member_use
                   onChanged: (ThemeMode? value) {
                     if (value != null) {
                       themeProvider.setThemeMode(value);

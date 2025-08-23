@@ -86,7 +86,12 @@ class _BalanceScreenState extends State<BalanceScreen> {
                       gradient: LinearGradient(
                         colors: [
                           Theme.of(context).primaryColor,
-                          Theme.of(context).primaryColor.withOpacity(0.8),
+                          Color.fromRGBO(
+                            (Theme.of(context).primaryColor.r * 255).round(),
+                            (Theme.of(context).primaryColor.g * 255).round(),
+                            (Theme.of(context).primaryColor.b * 255).round(),
+                            0.8,
+                          ),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -94,8 +99,12 @@ class _BalanceScreenState extends State<BalanceScreen> {
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color:
-                              Theme.of(context).primaryColor.withOpacity(0.3),
+                          color: Color.fromRGBO(
+                            (Theme.of(context).primaryColor.r * 255).round(),
+                            (Theme.of(context).primaryColor.g * 255).round(),
+                            (Theme.of(context).primaryColor.b * 255).round(),
+                            0.3,
+                          ),
                           blurRadius: 12,
                           offset: const Offset(0, 6),
                         ),
