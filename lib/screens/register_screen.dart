@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
+import 'package:ftw_solucoes/utils/validation_utils.dart';
 
 class RegisterScreen extends StatefulWidget {
   final AuthService authService;
@@ -127,7 +128,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
-                      return 'Por favor, insira seu nome';
+                      return 'Por favor, insira seu nome completo';
+                    }
+                    if (!ValidationUtils.isValidName(value)) {
+                      return 'Nome deve ter pelo menos 2 palavras e apenas letras';
                     }
                     return null;
                   },
@@ -168,7 +172,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Por favor, insira seu email';
                     }
-                    if (!value.contains('@')) {
+                    if (!RegExp(
+                            r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+                        .hasMatch(value)) {
                       return 'Por favor, insira um email válido';
                     }
                     return null;
@@ -223,8 +229,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     if (value == null || value.isEmpty) {
                       return 'Por favor, insira sua senha';
                     }
-                    if (value.length < 6) {
-                      return 'A senha deve ter pelo menos 6 caracteres';
+                    if (value.length < 8) {
+                      return 'A senha deve ter pelo menos 8 caracteres';
+                    }
+                    if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)')
+                        .hasMatch(value)) {
+                      return 'A senha deve conter letra maiúscula, minúscula e número';
                     }
                     return null;
                   },

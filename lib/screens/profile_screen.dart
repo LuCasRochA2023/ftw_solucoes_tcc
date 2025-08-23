@@ -15,6 +15,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:ftw_solucoes/utils/validation_utils.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AuthService authService;
@@ -52,6 +53,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
     mask: '###.###.###-##',
     filter: {"#": RegExp(r'[0-9]')},
   );
+
+  // Funções de validação usando ValidationUtils
+  bool _isValidCpf(String cpf) => ValidationUtils.isValidCpf(cpf);
+  bool _isValidPhone(String phone) => ValidationUtils.isValidPhone(phone);
+  bool _isValidName(String name) => ValidationUtils.isValidName(name);
+  bool _isValidCep(String cep) => ValidationUtils.isValidCep(cep);
+
+  // Função para verificar se CPF já está cadastrado
+  Future<bool> _isCpfAlreadyRegistered(String cpf) async {
+    try {
+      final cleanCpf = cpf.replaceAll(RegExp(r'[^\d]'), '');
+      if (cleanCpf.length != 11) return false;
+
+      final user = widget.authService.currentUser;
+      if (user == null) return false;
+
+      // Buscar usuários com o mesmo CPF, exceto o usuário atual
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('cpf', isEqualTo: _cpfController.text)
+          .get();
+
+      // Se encontrou algum documento e não é o usuário atual
+      for (var doc in querySnapshot.docs) {
+        if (doc.id != user.uid) {
+          return true; // CPF já está cadastrado por outro usuário
+        }
+      }
+
+      return false; // CPF não está cadastrado ou é do usuário atual
+    } catch (e) {
+      debugPrint('Erro ao verificar CPF duplicado: $e');
+      return false; // Em caso de erro, não bloquear o cadastro
+    }
+  }
 
   final _phoneFormatter = MaskTextInputFormatter(
     mask: '(##) #####-####',
@@ -357,6 +393,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final user = widget.authService.currentUser;
       if (user == null) throw Exception('Usuário não autenticado');
 
+      // Verificar se CPF já está cadastrado por outro usuário
+      final isDuplicate = await _isCpfAlreadyRegistered(_cpfController.text);
+      if (isDuplicate) {
+        throw Exception('CPF já está cadastrado no sistema');
+      }
+
       // Preparar dados do endereço
       final address = {
         'cep': _cepController.text,
@@ -592,18 +634,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       controller: _nameController,
                       label: 'Nome Completo',
                       keyboardType: TextInputType.name,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Por favor, informe seu nome completo';
+                        }
+                        if (!_isValidName(value)) {
+                          return 'Nome deve ter pelo menos 2 palavras e apenas letras';
+                        }
+                        return null;
+                      },
                     ),
                     _buildTextField(
                       controller: _cpfController,
                       label: 'CPF',
                       formatter: _cpfFormatter,
                       keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Por favor, informe seu CPF';
+                        }
+                        if (!_isValidCpf(value)) {
+                          return 'CPF inválido';
+                        }
+                        return null;
+                      },
                     ),
                     _buildTextField(
                       controller: _phoneController,
                       label: 'Telefone',
                       formatter: _phoneFormatter,
                       keyboardType: TextInputType.phone,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Por favor, informe seu telefone';
+                        }
+                        if (!_isValidPhone(value)) {
+                          return 'Telefone inválido';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -671,7 +740,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (value == null || value.isEmpty) {
               return 'Por favor, informe o CEP';
             }
-            if (value.replaceAll(RegExp(r'[^\d]'), '').length != 8) {
+            if (!_isValidCep(value)) {
               return 'CEP inválido';
             }
             return null;
@@ -687,6 +756,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           validator: (value) {
             if (value == null || value.isEmpty) {
               return 'Por favor, informe a rua';
+            }
+            if (!ValidationUtils.isValidTextOnly(value)) {
+              return 'Rua não deve conter números';
             }
             return null;
           },
@@ -705,6 +777,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, informe o número';
+                  }
+                  if (!ValidationUtils.isValidNumber(value)) {
+                    return 'Número deve conter apenas dígitos';
                   }
                   return null;
                 },
@@ -735,6 +810,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             if (value == null || value.isEmpty) {
               return 'Por favor, informe o bairro';
             }
+            if (!ValidationUtils.isValidTextOnly(value)) {
+              return 'Bairro não deve conter números';
+            }
             return null;
           },
         ),
@@ -753,6 +831,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, informe a cidade';
                   }
+                  if (!ValidationUtils.isValidTextOnly(value)) {
+                    return 'Cidade não deve conter números';
+                  }
                   return null;
                 },
               ),
@@ -769,6 +850,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Por favor, informe o estado';
+                  }
+                  if (!ValidationUtils.isValidState(value)) {
+                    return 'Estado deve ter 2 letras (ex: SP, RJ)';
                   }
                   return null;
                 },

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:ftw_solucoes/utils/validation_utils.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -32,6 +33,25 @@ class AuthService {
 
   Future<void> register(String name, String email, String password) async {
     try {
+      // Validar dados antes de criar o usuário
+      if (!ValidationUtils.isValidName(name)) {
+        throw Exception('Nome deve ter pelo menos 2 palavras e apenas letras');
+      }
+
+      if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+          .hasMatch(email)) {
+        throw Exception('Email inválido');
+      }
+
+      if (password.length < 8) {
+        throw Exception('A senha deve ter pelo menos 8 caracteres');
+      }
+
+      if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
+        throw Exception(
+            'A senha deve conter letra maiúscula, minúscula e número');
+      }
+
       final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -92,6 +112,21 @@ class AuthService {
 
   Future<UserCredential> signUp(String email, String password) async {
     try {
+      // Validar dados antes de criar o usuário
+      if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+          .hasMatch(email)) {
+        throw Exception('Email inválido');
+      }
+
+      if (password.length < 8) {
+        throw Exception('A senha deve ter pelo menos 8 caracteres');
+      }
+
+      if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
+        throw Exception(
+            'A senha deve conter letra maiúscula, minúscula e número');
+      }
+
       return await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -113,6 +148,25 @@ class AuthService {
       String email, String password, String name) async {
     try {
       debugPrint('Iniciando registro de usuário: $email');
+
+      // Validar dados antes de criar o usuário
+      if (!ValidationUtils.isValidName(name)) {
+        throw Exception('Nome deve ter pelo menos 2 palavras e apenas letras');
+      }
+
+      if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+          .hasMatch(email)) {
+        throw Exception('Email inválido');
+      }
+
+      if (password.length < 8) {
+        throw Exception('A senha deve ter pelo menos 8 caracteres');
+      }
+
+      if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
+        throw Exception(
+            'A senha deve conter letra maiúscula, minúscula e número');
+      }
 
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
