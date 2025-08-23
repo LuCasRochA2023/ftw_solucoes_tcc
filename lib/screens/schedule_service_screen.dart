@@ -215,6 +215,74 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return true;
   }
 
+  /// Verifica se um horário está disponível para agendamento
+  /// Lança exceção se já existe um agendamento confirmado no mesmo horário
+  Future<void> _checkTimeSlotAvailability(DateTime dateTime) async {
+    try {
+      debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
+      debugPrint('Horário selecionado: ${dateTime.toString()}');
+
+      // Buscar agendamentos no mesmo horário (com tolerância de 1 hora)
+      final startTime = dateTime.subtract(const Duration(hours: 1));
+      final endTime = dateTime.add(const Duration(hours: 1));
+
+      // Buscar todos os agendamentos no período e filtrar por status no código
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('dateTime', isGreaterThanOrEqualTo: startTime)
+          .where('dateTime', isLessThanOrEqualTo: endTime)
+          .get();
+
+      debugPrint(
+          'Encontrados ${querySnapshot.docs.length} agendamentos no período');
+
+      // Filtrar apenas agendamentos confirmados e pendentes
+      final relevantAppointments = querySnapshot.docs.where((doc) {
+        final data = doc.data();
+        final status = data['status'] as String?;
+        return status == 'confirmed' || status == 'pending';
+      }).toList();
+
+      debugPrint(
+          'Agendamentos relevantes (confirmed/pending): ${relevantAppointments.length}');
+
+      for (var doc in relevantAppointments) {
+        final data = doc.data();
+        final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
+        final status = data['status'] as String?;
+        final appointmentId = doc.id;
+
+        // Verificar se há sobreposição de horário
+        if (_hasTimeOverlap(dateTime, appointmentDateTime)) {
+          final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
+          final dateSlot = DateFormat('dd/MM/yyyy').format(appointmentDateTime);
+
+          debugPrint('=== DEBUG: Conflito de horário detectado ===');
+          debugPrint('Horário conflitante: $timeSlot em $dateSlot');
+          debugPrint('Status do agendamento: $status');
+          debugPrint('ID do agendamento: $appointmentId');
+
+          throw Exception(
+              'Horário não disponível! Já existe um agendamento às $timeSlot em $dateSlot. '
+              'Por favor, escolha outro horário.');
+        }
+      }
+
+      debugPrint('=== DEBUG: Horário disponível para agendamento ===');
+    } catch (e) {
+      debugPrint('Erro ao verificar disponibilidade: $e');
+      rethrow; // Re-lançar a exceção para ser tratada na função chamadora
+    }
+  }
+
+  /// Verifica se há sobreposição entre dois horários
+  bool _hasTimeOverlap(DateTime newAppointment, DateTime existingAppointment) {
+    // Considerar sobreposição se os horários estão a menos de 2 horas de diferença
+    final difference =
+        (newAppointment.difference(existingAppointment).abs().inMinutes);
+    return difference < 120; // 2 horas = 120 minutos
+  }
+
   Future<void> _loadBookedTimeSlots() async {
     if (!mounted) return;
 
@@ -248,10 +316,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final Map<String, String> bookedSlots = {};
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
-        if (data['status'] == 'scheduled') {
+        final status = data['status'] as String?;
+
+        // Considerar agendamentos confirmados e pendentes como ocupados
+        if (status == 'confirmed' || status == 'pending') {
           final dateTime = (data['dateTime'] as Timestamp).toDate();
-          dynamic serviceField = data['service'];
+          dynamic serviceField =
+              data['services'] ?? data['service']; // Novo formato com fallback
           String service;
+
           if (serviceField == null) {
             service = 'Serviço';
           } else if (serviceField is List) {
@@ -264,9 +337,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           } else {
             service = serviceField as String;
           }
+
           final timeSlot = DateFormat('HH:mm').format(dateTime);
-          bookedSlots[timeSlot] = service;
-          debugPrint('Booked slot: $timeSlot for service: $service');
+          final statusText =
+              status == 'confirmed' ? ' (Confirmado)' : ' (Pendente)';
+          bookedSlots[timeSlot] = service + statusText;
+          debugPrint(
+              'Booked slot: $timeSlot for service: $service - Status: $status');
         }
       }
 
@@ -859,6 +936,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[1]),
       );
 
+      // Verificar se já existe um agendamento confirmado no mesmo horário
+      await _checkTimeSlotAvailability(dateTime);
+
       // Montar lista de serviços com título e tipo
       final List<Map<String, dynamic>> servicesToSave =
           widget.services.map((s) {
@@ -1088,6 +1168,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           ),
         ),
         backgroundColor: _mainColor,
+        foregroundColor: Colors.white,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

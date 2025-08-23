@@ -253,17 +253,67 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         debugPrint('Resposta do backend:');
-        debugPrint(data);
-        final qr =
-            data['point_of_interaction']?['transaction_data']?['qr_code'];
+        try {
+          debugPrint('Tipo da resposta: ${data.runtimeType}');
+          if (data is Map) {
+            debugPrint('Keys da resposta: ${data.keys.toList()}');
+          } else {
+            debugPrint('Resposta não é um Map');
+          }
+        } catch (e) {
+          debugPrint('Erro ao imprimir dados da resposta: $e');
+        }
+
+        // Verificação mais robusta do QR code
+        String? qr;
+        try {
+          final pointOfInteraction = data['point_of_interaction'];
+          if (pointOfInteraction != null &&
+              pointOfInteraction is Map<String, dynamic>) {
+            final transactionData = pointOfInteraction['transaction_data'];
+            if (transactionData != null &&
+                transactionData is Map<String, dynamic>) {
+              final qrCode = transactionData['qr_code'];
+              if (qrCode != null && qrCode is String) {
+                qr = qrCode;
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Erro ao extrair QR code: $e');
+          qr = null;
+        }
+
         debugPrint('QR recebido: $qr');
 
         if (qr != null && qr.isNotEmpty) {
           debugPrint(
               '=== DEBUG: Definindo _isProcessing como false (sucesso) ===');
+
+          // Verificação segura do ID do pagamento
+          String? paymentId;
+          try {
+            final id = data['id'];
+            if (id != null) {
+              if (id is String) {
+                paymentId = id;
+              } else if (id is int) {
+                paymentId = id.toString();
+              } else if (id is double) {
+                paymentId = id.toInt().toString();
+              } else {
+                debugPrint('Tipo inesperado para ID: ${id.runtimeType}');
+                paymentId = null;
+              }
+            }
+          } catch (e) {
+            debugPrint('Erro ao extrair ID do pagamento: $e');
+            paymentId = null;
+          }
+
           setState(() {
             _pixQrCode = qr;
-            _paymentId = data['id'].toString();
+            _paymentId = paymentId;
             _isProcessing = false;
           });
           _startStatusPolling();
@@ -279,10 +329,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
         if (errorData['message'] != null) {
           userFriendlyMessage = errorData['message'];
         } else if (errorData['error'] != null) {
-          if (errorData['error']['message'] != null) {
-            userFriendlyMessage = errorData['error']['message'];
-          } else if (errorData['error']['error'] != null) {
-            userFriendlyMessage = 'Erro: ${errorData['error']['error']}';
+          final error = errorData['error'];
+          if (error is String) {
+            // Tratamento especial para erros conhecidos
+            if (error.contains('Parâmetros obrigatórios ausentes')) {
+              userFriendlyMessage =
+                  'Dados incompletos. Verifique se todos os campos estão preenchidos corretamente.';
+            } else if (error.contains('QR Code')) {
+              userFriendlyMessage =
+                  'Não foi possível gerar o QR Code PIX. Tente novamente.';
+            } else {
+              userFriendlyMessage = error;
+            }
+          } else if (error is Map && error['message'] != null) {
+            userFriendlyMessage = error['message'];
+          } else if (error is Map && error['error'] != null) {
+            userFriendlyMessage = 'Erro: ${error['error']}';
           }
         }
 
@@ -342,6 +404,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       } else if (e.toString().contains('QR Code não foi gerado')) {
         userFriendlyMessage =
             'Não foi possível gerar o QR Code PIX. Tente novamente ou entre em contato com o suporte.';
+      } else if (e.toString().contains('is not a subtype of type')) {
+        userFriendlyMessage =
+            'Erro no formato da resposta do servidor. Tente novamente ou entre em contato com o suporte.';
       }
 
       setState(() {
@@ -449,6 +514,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         await _processBalancePayment();
       }
 
+      // Salvar informações do pagamento para possível devolução futura
+      await _savePaymentInfo();
+
       if (widget.appointmentId.isNotEmpty) {
         debugPrint('=== DEBUG: Atualizando status do agendamento ===');
         await FirebaseFirestore.instance
@@ -469,6 +537,52 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao processar pagamento com saldo: $e');
+    }
+  }
+
+  Future<void> _savePaymentInfo() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      // Determinar método de pagamento
+      String paymentMethod;
+      bool canRefund;
+      
+      if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
+        // Pagamento com saldo da carteira
+        paymentMethod = 'wallet_balance';
+        canRefund = true; // Saldo da carteira sempre pode ser devolvido
+      } else {
+        // Pagamento com PIX ou Cartão
+        paymentMethod = _selectedTab == 0 ? 'pix' : 'credit_card';
+        canRefund = _selectedTab == 0 || _selectedTab == 1; // PIX ou Cartão
+      }
+
+      // Salvar informações do pagamento para devolução futura
+      await FirebaseFirestore.instance.collection('payments').add({
+        'userId': user.uid,
+        'appointmentId': widget.appointmentId,
+        'amount': widget.amount,
+        'paymentMethod': paymentMethod,
+        'serviceTitle': widget.serviceTitle,
+        'serviceDescription': widget.serviceDescription,
+        'carId': widget.carId,
+        'carModel': widget.carModel,
+        'carPlate': widget.carPlate,
+        'status': 'paid',
+        'canRefund': canRefund,
+        'balanceUsed': widget.balanceToUse ?? 0.0, // Valor usado do saldo
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint(
+          '=== DEBUG: Informações do pagamento salvas para devolução futura ===');
+      debugPrint('PaymentMethod: $paymentMethod');
+      debugPrint('CanRefund: $canRefund');
+      debugPrint('BalanceUsed: ${widget.balanceToUse ?? 0.0}');
+    } catch (e) {
+      debugPrint('Erro ao salvar informações do pagamento: $e');
     }
   }
 
@@ -507,6 +621,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   static String get mpPublicKey => EnvironmentConfig.mercadopagoPublicKeyValue;
+
+  String _formatCpf(String cpf) {
+    try {
+      final cleanCpf = cpf.replaceAll(RegExp(r'[^\d]'), '');
+      if (cleanCpf.length == 11) {
+        return cleanCpf.replaceAllMapped(
+            RegExp(r'(\d{3})(\d{3})(\d{3})(\d{2})'), (Match m) {
+          final group1 = m.group(1);
+          final group2 = m.group(2);
+          final group3 = m.group(3);
+          final group4 = m.group(4);
+          if (group1 != null &&
+              group2 != null &&
+              group3 != null &&
+              group4 != null) {
+            return '$group1.$group2.$group3-$group4';
+          }
+          return cleanCpf;
+        });
+      }
+      return cpf;
+    } catch (e) {
+      debugPrint('Erro ao formatar CPF: $e');
+      return cpf;
+    }
+  }
 
   Future<String?> gerarTokenCartao({
     required String cardNumber,
@@ -573,8 +713,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     if (response.statusCode == 201) {
       final data = jsonDecode(response.body);
-      debugPrint('Token gerado com sucesso: ${data['id']}');
-      return data['id'];
+
+      // Verificação segura do ID do token
+      String? tokenId;
+      try {
+        final id = data['id'];
+        if (id != null) {
+          if (id is String) {
+            tokenId = id;
+          } else if (id is int) {
+            tokenId = id.toString();
+          } else if (id is double) {
+            tokenId = id.toInt().toString();
+          } else {
+            debugPrint('Tipo inesperado para ID do token: ${id.runtimeType}');
+            tokenId = null;
+          }
+        }
+      } catch (e) {
+        debugPrint('Erro ao extrair ID do token: $e');
+        tokenId = null;
+      }
+
+      debugPrint('Token gerado com sucesso: $tokenId');
+      return tokenId;
     } else {
       final errorData = jsonDecode(response.body);
       debugPrint('Erro ao gerar token: ${jsonEncode(errorData)}');
@@ -906,7 +1068,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'CPF: ${_userCpf!.replaceAll(RegExp(r'[^\d]'), '').replaceAllMapped(RegExp(r'(\d{3})(\d{3})(\d{3})(\d{2})'), (Match m) => '${m[1]}.${m[2]}.${m[3]}-${m[4]}')}',
+                        'CPF: ${_formatCpf(_userCpf!)}',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.green[700],
@@ -1443,6 +1605,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               });
                               return;
                             }
+
+                            // Verificar se são números válidos
+                            final month = exp[0].trim();
+                            final year = exp[1].trim();
+                            if (month.isEmpty ||
+                                year.isEmpty ||
+                                int.tryParse(month) == null ||
+                                int.tryParse(year) == null) {
+                              debugPrint('Erro: Mês ou ano inválido');
+                              setState(() {
+                                _cardError = 'Formato de data inválido';
+                                _isCardProcessing = false;
+                              });
+                              return;
+                            }
                             debugPrint('CPF antes da tokenização: $_userCpf');
                             debugPrint(
                                 'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
@@ -1460,8 +1637,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
                             final cardToken = await gerarTokenCartao(
                               cardNumber: _cardNumberController.text,
-                              expirationMonth: exp[0],
-                              expirationYear: exp[1],
+                              expirationMonth: month,
+                              expirationYear: year,
                               cvv: _cvvController.text,
                               cardholderName: _nameController.text,
                               cpf: _userCpf!, // Usar CPF do usuário
@@ -1597,10 +1774,32 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final status = data['status'] as String?;
       final statusDetail = data['status_detail'] as String?;
 
+      // Verificação segura do ID do pagamento
+      String? paymentId;
+      try {
+        final id = data['id'];
+        if (id != null) {
+          if (id is String) {
+            paymentId = id;
+          } else if (id is int) {
+            paymentId = id.toString();
+          } else if (id is double) {
+            paymentId = id.toInt().toString();
+          } else {
+            debugPrint(
+                'Tipo inesperado para ID do pagamento: ${id.runtimeType}');
+            paymentId = null;
+          }
+        }
+      } catch (e) {
+        debugPrint('Erro ao extrair ID do pagamento: $e');
+        paymentId = null;
+      }
+
       debugPrint('=== DEBUG: Status do pagamento ===');
       debugPrint('Status: $status');
       debugPrint('Status Detail: $statusDetail');
-      debugPrint('Payment ID: ${data['id']}');
+      debugPrint('Payment ID: $paymentId');
 
       if (status == 'approved') {
         debugPrint('Pagamento aprovado com sucesso!');
@@ -1612,8 +1811,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
               'Pagamento em processamento. Aguarde a confirmação. Status: $statusDetail';
         });
         // Aguardar um pouco e verificar novamente
-        await Future.delayed(const Duration(seconds: 3));
-        await _checkPaymentStatus(data['id'].toString());
+        if (paymentId != null) {
+          await Future.delayed(const Duration(seconds: 3));
+          await _checkPaymentStatus(paymentId);
+        }
       } else if (status == 'rejected') {
         debugPrint('Pagamento rejeitado');
         setState(() {
@@ -1633,7 +1834,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
         errorMessage = errorData['message'] ??
             'O tipo de cartão não corresponde ao BIN informado. Verifique os dados do cartão.';
       } else if (errorData['error'] != null) {
-        errorMessage = errorData['error'];
+        final error = errorData['error'];
+        if (error is String) {
+          // Tratamento especial para erros conhecidos
+          if (error.contains('Parâmetros obrigatórios ausentes')) {
+            errorMessage =
+                'Dados do cartão incompletos. Verifique se todos os campos estão preenchidos corretamente.';
+          } else {
+            errorMessage = error;
+          }
+        } else {
+          errorMessage = error.toString();
+        }
       } else {
         errorMessage = response.body;
       }
