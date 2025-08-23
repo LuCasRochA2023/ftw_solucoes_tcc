@@ -1,0 +1,20 @@
+# 🔐 Configuração de Keystore para Release
+# Copie este arquivo para key.properties e preencha com suas informações
+
+# Senha do keystore (crie uma senha forte)
+storePassword=sua_senha_do_keystore_aqui
+
+# Senha da chave (pode ser a mesma da store)
+keyPassword=sua_senha_da_chave_aqui
+
+# Alias da chave (mantenha 'upload')
+keyAlias=upload
+
+# Caminho para o arquivo keystore
+storeFile=upload-keystore.jks
+
+# ⚠️ IMPORTANTE:
+# 1. Nunca commite o arquivo key.properties no git
+# 2. Mantenha o keystore em local seguro
+# 3. Faça backup do keystore - se perder, não conseguirá atualizar o app
+# 4. Use senhas fortes e diferentes

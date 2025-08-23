@@ -45,6 +45,10 @@ app.*.map.json
 # Backend configuration
 lib/utils/backend_url.dart
 
+# Keystore files (NUNCA commite estes arquivos!)
+*.jks
+*.keystore
+android/key.properties
 
 # Android Studio will place build artifacts here
 /android/app/debug
