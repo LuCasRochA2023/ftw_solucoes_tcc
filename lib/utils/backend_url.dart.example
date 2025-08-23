@@ -2,16 +2,16 @@ import 'environment_config.dart';
 
 class BackendUrl {
   // Para desenvolvimento local
-  static const String localUrl = 'https://srv962030.hstgr.cloud';
+  static const String localUrl = 'example.com.br';
 
   // Para emulador Android
-  static const String androidEmulatorUrl = 'https://srv962030.hstgr.cloud';
+  static const String androidEmulatorUrl = 'example.com.br';
 
-  // Para dispositivo físico (substitua pelo seu IP local)
-  static const String deviceUrl = 'http://192.168.1.100:3001';
+  // Para dispositivo físico 
+  static const String deviceUrl = 'example.com.br';
 
   // URL do backend em produção
-  static const String productionUrl = 'https://srv962030.hstgr.cloud';
+  static const String productionUrl = 'exemple.com.br';
 
   // URL padrão - usa a configuração de ambiente
   static String get baseUrl {
