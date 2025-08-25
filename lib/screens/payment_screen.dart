@@ -93,6 +93,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
     debugPrint('=== DEBUG: Inicializando pagamento ===');
     _isInitialized = true;
 
+    // Se há saldo para usar, processar o pagamento com saldo primeiro
+    if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
+      debugPrint('=== DEBUG: Processando pagamento com saldo ===');
+      await _processBalancePayment();
+      
+      // Se o valor restante é 0, navegar para sucesso
+      if (widget.amount <= 0) {
+        if (mounted && !_isDisposed) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => HomeScreen(authService: AuthService()),
+              settings: const RouteSettings(arguments: 'pagamento_sucesso'),
+            ),
+            (route) => false,
+          );
+        }
+        return;
+      }
+      // Se há valor restante, continuar para criar pagamento PIX
+      debugPrint('=== DEBUG: Há valor restante para pagar: R\$ ${widget.amount.toStringAsFixed(2)} ===');
+    }
+
     // Primeiro carregar o CPF, depois criar o pagamento
     await _loadUserCpf();
     await _criarPagamentoPix();
@@ -508,11 +531,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     try {
-      // Se há saldo para usar, processar o pagamento com saldo
-      if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
-        debugPrint('=== DEBUG: Processando pagamento com saldo ===');
-        await _processBalancePayment();
-      }
+      // O pagamento com saldo já foi processado na inicialização
+      // Aqui apenas processamos o pagamento PIX/Cartão que foi confirmado
 
       // Salvar informações do pagamento para possível devolução futura
       await _savePaymentInfo();
@@ -548,7 +568,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // Determinar método de pagamento
       String paymentMethod;
       bool canRefund;
-      
+
       if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
         // Pagamento com saldo da carteira
         paymentMethod = 'wallet_balance';
@@ -615,6 +635,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'appointmentId': widget.appointmentId,
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // Atualizar status do agendamento para confirmado
+      await FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId)
+          .update({'status': 'confirmed'});
     } catch (e) {
       throw Exception('Erro ao processar pagamento com saldo: $e');
     }

@@ -130,7 +130,7 @@ void main() {
         const suvPrice = 80.0;
 
         // Act
-        final total = suvPrice;
+        const total = suvPrice;
 
         // Assert
         expect(total, equals(80.0));
@@ -143,7 +143,7 @@ void main() {
         const carnaubaPrice = 30.0;
 
         // Act
-        final total = suvPrice + carnaubaPrice;
+        const total = suvPrice + carnaubaPrice;
 
         // Assert
         expect(total, equals(110.0));
@@ -156,7 +156,7 @@ void main() {
         const jetCeraPrice = 10.0;
 
         // Act
-        final total = caminhonetePrice + jetCeraPrice;
+        const total = caminhonetePrice + jetCeraPrice;
 
         // Assert
         expect(total, equals(110.0));
@@ -169,7 +169,7 @@ void main() {
         const carnaubaPrice = 30.0;
 
         // Act
-        final total = carroComumPrice + levaTrazPrice + carnaubaPrice;
+        const total = carroComumPrice + levaTrazPrice + carnaubaPrice;
 
         // Assert
         expect(total, equals(120.0));
@@ -274,8 +274,8 @@ void main() {
     group('Validação de Lógica de Negócio Avançada', () {
       test('deve validar que cera só é aplicável em serviços de lavagem', () {
         // Arrange
-        final washingService = 'Lavagem SUV';
-        final nonWashingService = 'Leva e Traz';
+        const washingService = 'Lavagem SUV';
+        const nonWashingService = 'Leva e Traz';
 
         // Act
         final washingCanHaveWax =
@@ -294,7 +294,7 @@ void main() {
         const jetCeraPrice = 10.0;
 
         // Act
-        final priceDifference = carnaubaPrice - jetCeraPrice;
+        const priceDifference = carnaubaPrice - jetCeraPrice;
 
         // Assert
         expect(priceDifference, equals(20.0));

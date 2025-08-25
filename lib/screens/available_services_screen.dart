@@ -157,6 +157,30 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
     return false;
   }
 
+  // Método para verificar se um serviço é de lavagem
+  bool _isLavagemService(String serviceTitle) {
+    final List<String> lavagemServices = [
+      'Lavagem SUV',
+      'Lavagem Carro Comum',
+      'Lavagem Caminhonete'
+    ];
+    return lavagemServices.contains(serviceTitle);
+  }
+
+  // Método para verificar se já há um serviço de lavagem selecionado
+  bool _hasLavagemServiceSelected() {
+    for (int selectedIndex in _selectedIndexes) {
+      final services = _getAllServices();
+      if (selectedIndex < services.length) {
+        final serviceTitle = services[selectedIndex]['title'];
+        if (_isLavagemService(serviceTitle)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // Método auxiliar para obter todos os serviços
   List<Map<String, dynamic>> _getAllServices() {
     final List<Map<String, dynamic>> washingServices = [
@@ -764,6 +788,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                 final isSelected = _selectedIndexes.contains(index);
                 final isLevaETrazDisabled = service['title'] == 'Leva e Traz' &&
                     (!_levaETrazAvailable || !_isLevaETrazSelectable());
+                final isLavagemDisabled = _isLavagemService(service['title']) &&
+                    !isSelected &&
+                    _hasLavagemServiceSelected();
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -772,11 +799,13 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
-                    onTap: () => _onServiceTap(index, service),
+                    onTap: (isLevaETrazDisabled || isLavagemDisabled)
+                        ? null
+                        : () => _onServiceTap(index, service),
                     leading: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: isLevaETrazDisabled
+                        color: (isLevaETrazDisabled || isLavagemDisabled)
                             ? Colors.grey
                             : service['color'],
                         shape: BoxShape.circle,
@@ -824,7 +853,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                             style: GoogleFonts.poppins(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: isLevaETrazDisabled ? Colors.grey : null,
+                              color: (isLevaETrazDisabled || isLavagemDisabled)
+                                  ? Colors.grey
+                                  : null,
                             ),
                             maxLines: service['title'] == 'Lavagem Caminhonete'
                                 ? 2
@@ -832,7 +863,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (isLevaETrazDisabled) ...[
+                        if (isLevaETrazDisabled || isLavagemDisabled) ...[
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -845,7 +876,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                               service['title'] == 'Leva e Traz' &&
                                       !_levaETrazAvailable
                                   ? 'Fora da área'
-                                  : 'Selecione um serviço',
+                                  : isLavagemDisabled
+                                      ? 'Remova outro serviço'
+                                      : 'Selecione um serviço',
                               style: GoogleFonts.poppins(
                                 fontSize: 8,
                                 color: Colors.white,
@@ -860,7 +893,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                         ? Text(
                             service['price'],
                             style: GoogleFonts.poppins(
-                              color: isLevaETrazDisabled
+                              color: (isLevaETrazDisabled || isLavagemDisabled)
                                   ? Colors.grey
                                   : service['color'],
                               fontWeight: FontWeight.bold,
@@ -896,6 +929,25 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                     : () {
                         final selectedServices =
                             _selectedIndexes.map((i) => services[i]).toList();
+
+                        // Verificar se há mais de um serviço de lavagem
+                        final lavagemServices = selectedServices
+                            .where((service) =>
+                                _isLavagemService(service['title']))
+                            .toList();
+
+                        if (lavagemServices.length > 1) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Apenas um tipo de lavagem é permitido por agendamento. '
+                                  'Remova um dos serviços de lavagem antes de continuar.'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
                         Navigator.push(
                           context,
                           MaterialPageRoute(

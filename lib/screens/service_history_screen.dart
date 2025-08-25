@@ -54,11 +54,12 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       // Primeiro tentar com orderBy, se falhar, buscar sem ordenação
       QuerySnapshot querySnapshot;
       try {
+        debugPrint('=== DEBUG: Tentando consulta com orderBy ===');
         querySnapshot = await _firestore
             .collection('appointments')
             .where('userId', isEqualTo: user.uid)
             .orderBy('createdAt', descending: true)
-            .get();
+            .get(const GetOptions(source: Source.server));
         debugPrint('=== DEBUG: Consulta com orderBy executada com sucesso ===');
       } catch (e) {
         debugPrint(
@@ -66,23 +67,49 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         querySnapshot = await _firestore
             .collection('appointments')
             .where('userId', isEqualTo: user.uid)
-            .get();
+            .get(const GetOptions(source: Source.server));
         debugPrint('=== DEBUG: Consulta sem orderBy executada com sucesso ===');
       }
 
       debugPrint(
           '=== DEBUG: Consulta executada, documentos encontrados: ${querySnapshot.docs.length} ===');
 
+      // Consulta de teste para verificar todos os agendamentos
+      final allAppointments = await _firestore.collection('appointments').get();
+      debugPrint(
+          '=== DEBUG: Total de agendamentos na coleção: ${allAppointments.docs.length} ===');
+
+      // Verificar agendamentos do usuário atual
+      final userAppointments = allAppointments.docs.where((doc) {
+        final data = doc.data();
+        return data['userId'] == user.uid;
+      }).toList();
+      debugPrint(
+          '=== DEBUG: Agendamentos do usuário atual: ${userAppointments.length} ===');
+
+      // Verificar status dos agendamentos do usuário
+      for (var doc in userAppointments) {
+        final data = doc.data();
+        debugPrint(
+            '=== DEBUG: Agendamento do usuário: ${doc.id} - Status: ${data['status']} - UserId: ${data['userId']} ===');
+      }
+
       final appointments = querySnapshot.docs.map((doc) {
         final data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id;
         debugPrint(
-            '=== DEBUG: Agendamento carregado: ${doc.id} - Status: ${data['status']} ===');
+            '=== DEBUG: Agendamento carregado: ${doc.id} - Status: ${data['status']} - DateTime: ${data['dateTime']} ===');
         return data;
       }).toList();
 
       debugPrint(
           '=== DEBUG: Total de agendamentos processados: ${appointments.length} ===');
+
+      // Verificar status dos agendamentos processados
+      for (var appointment in appointments) {
+        debugPrint(
+            '=== DEBUG: Agendamento processado: ${appointment['id']} - Status: ${appointment['status']} ===');
+      }
 
       // Ordenar por createdAt se disponível, caso contrário por dateTime
       appointments.sort((a, b) {
@@ -110,6 +137,12 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
 
       debugPrint(
           '=== DEBUG: Estado atualizado, _appointments.length: ${_appointments.length} ===');
+
+      // Verificar agendamentos no estado
+      for (var appointment in _appointments) {
+        debugPrint(
+            '=== DEBUG: Agendamento no estado: ${appointment['id']} - Status: ${appointment['status']} ===');
+      }
     } catch (e) {
       debugPrint('=== DEBUG: Erro ao carregar agendamentos: $e ===');
       if (mounted) {
@@ -126,66 +159,218 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       final user = _auth.currentUser;
       if (user == null) return;
 
-      // Atualizar status do agendamento
+      final appointmentStatus = appointment['status'] as String?;
+
+      // Permitir cancelamento de todos os tipos de agendamento
+      // Mas apenas agendamentos confirmados devolvem dinheiro
+      if (appointmentStatus == 'cancelled') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Este agendamento já foi cancelado.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      debugPrint('=== DEBUG: Cancelando agendamento ===');
+      debugPrint('ID do agendamento: ${appointment['id']}');
+      debugPrint('Status atual: $appointmentStatus');
+
+      // Atualizar status do agendamento para cancelado
       await _firestore
           .collection('appointments')
           .doc(appointment['id'])
           .update({'status': 'cancelled'});
 
-      // Verificar se o serviço foi pago e adicionar saldo
-      final status = appointment['status'] as String?;
-      final amount = appointment['amount'] as double?;
+      debugPrint('=== DEBUG: Status atualizado para "cancelled" ===');
 
-      if ((status == 'confirmed' || status == 'pending') &&
-          amount != null &&
-          amount > 0) {
-        // Adicionar saldo ao usuário
-        final userRef = _firestore.collection('users').doc(user.uid);
+      // Verificar se a atualização foi bem-sucedida
+      final updatedDoc = await _firestore
+          .collection('appointments')
+          .doc(appointment['id'])
+          .get();
+      final updatedStatus = updatedDoc.data()?['status'];
+      debugPrint('=== DEBUG: Status após atualização: $updatedStatus ===');
 
-        await _firestore.runTransaction((transaction) async {
-          final userDoc = await transaction.get(userRef);
-          final currentBalance = (userDoc.data()?['balance'] ?? 0.0).toDouble();
-          final newBalance = currentBalance + amount;
+      // Só devolver dinheiro se o agendamento estava confirmado
+      if (appointmentStatus == 'confirmed') {
+        final amount = appointment['amount'] as double?;
 
-          transaction.update(userRef, {'balance': newBalance});
+        if (amount != null && amount > 0) {
+          // Adicionar saldo ao usuário
+          final userRef = _firestore.collection('users').doc(user.uid);
 
-          // Registrar transação
-          final transactionRef = _firestore.collection('transactions').doc();
-          transaction.set(transactionRef, {
-            'userId': user.uid,
-            'amount': amount,
-            'type': 'credit',
-            'description': 'Reembolso - Cancelamento de serviço',
-            'appointmentId': appointment['id'],
-            'createdAt': FieldValue.serverTimestamp(),
+          await _firestore.runTransaction((transaction) async {
+            final userDoc = await transaction.get(userRef);
+            final currentBalance =
+                (userDoc.data()?['balance'] ?? 0.0).toDouble();
+            final newBalance = currentBalance + amount;
+
+            transaction.update(userRef, {'balance': newBalance});
+
+            // Registrar transação
+            final transactionRef = _firestore.collection('transactions').doc();
+            transaction.set(transactionRef, {
+              'userId': user.uid,
+              'amount': amount,
+              'type': 'credit',
+              'description': 'Reembolso - Cancelamento de serviço',
+              'appointmentId': appointment['id'],
+              'createdAt': FieldValue.serverTimestamp(),
+            });
           });
-        });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                  'Serviço cancelado. R\$ ${amount.toStringAsFixed(2)} adicionado ao seu saldo.'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'Serviço cancelado. R\$ ${amount.toStringAsFixed(2)} adicionado ao seu saldo.'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Serviço cancelado com sucesso.'),
+                backgroundColor: Colors.blue,
+              ),
+            );
+          }
         }
       } else {
+        // Para agendamentos não confirmados (pending, no_payment, etc.)
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Serviço cancelado com sucesso.'),
+              content: Text('Agendamento cancelado com sucesso.'),
               backgroundColor: Colors.blue,
             ),
           );
         }
       }
+
+      // Recarregar agendamentos após cancelamento
+      debugPrint('=== DEBUG: Recarregando agendamentos após cancelamento ===');
+      await _loadAppointments();
     } catch (e) {
       debugPrint('Erro ao cancelar agendamento: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao cancelar agendamento: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Exclui um agendamento da lista (apenas para agendamentos concluídos ou cancelados)
+  Future<void> _deleteAppointment(Map<String, dynamic> appointment) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      final appointmentStatus = appointment['status'] as String?;
+
+      // Permitir exclusão apenas de agendamentos concluídos ou cancelados
+      if (appointmentStatus != 'completed' &&
+          appointmentStatus != 'cancelled') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Apenas agendamentos concluídos ou cancelados podem ser excluídos.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Excluir o agendamento do Firestore
+      await _firestore
+          .collection('appointments')
+          .doc(appointment['id'])
+          .delete();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Agendamento excluído com sucesso.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Erro ao excluir agendamento: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao excluir agendamento: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Exclui todos os agendamentos cancelados do usuário
+  Future<void> _deleteAllCancelledAppointments() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return;
+
+      // Buscar todos os agendamentos cancelados do usuário
+      final querySnapshot = await _firestore
+          .collection('appointments')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', isEqualTo: 'cancelled')
+          .get();
+
+      if (querySnapshot.docs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Não há agendamentos cancelados para excluir.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final cancelledCount = querySnapshot.docs.length;
+
+      // Excluir todos os agendamentos cancelados
+      final batch = _firestore.batch();
+      for (var doc in querySnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '$cancelledCount agendamento(s) cancelado(s) excluído(s) com sucesso.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Recarregar a lista após a exclusão
+        _loadAppointments();
+      }
+    } catch (e) {
+      debugPrint('Erro ao excluir agendamentos cancelados: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao excluir agendamentos cancelados: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -329,6 +514,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         builder: (context) => ScheduleServiceScreen(
           services: servicesList,
           authService: AuthService(),
+          rescheduleAppointmentId:
+              appointment['id'], // Passar ID do agendamento para reagendamento
         ),
       ),
     );
@@ -344,8 +531,6 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return 'Concluído';
       case 'cancelled':
         return 'Cancelado';
-      case 'no_payment':
-        return 'Sem Pagamento';
       default:
         return 'Desconhecido';
     }
@@ -361,8 +546,6 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return Colors.green;
       case 'cancelled':
         return Colors.red;
-      case 'no_payment':
-        return Colors.purple;
       default:
         return Colors.grey;
     }
@@ -400,6 +583,78 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+        actions: [
+          // Botão para excluir todos os agendamentos cancelados
+          IconButton(
+            icon: const Icon(Icons.delete_sweep),
+            tooltip: 'Excluir todos os cancelados',
+            onPressed: () async {
+              // Verificar se há agendamentos cancelados antes de mostrar o diálogo
+              final user = _auth.currentUser;
+              if (user != null) {
+                final querySnapshot = await _firestore
+                    .collection('appointments')
+                    .where('userId', isEqualTo: user.uid)
+                    .where('status', isEqualTo: 'cancelled')
+                    .get();
+
+                if (querySnapshot.docs.isEmpty) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Não há agendamentos cancelados para excluir.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                  return;
+                }
+
+                final cancelledCount = querySnapshot.docs.length;
+
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text(
+                      'Excluir Agendamentos Cancelados',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                    ),
+                    content: Text(
+                      'Tem certeza que deseja excluir todos os $cancelledCount agendamento(s) cancelado(s)?\n\nEsta ação não pode ser desfeita.',
+                      style: GoogleFonts.poppins(),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: Text(
+                          'Cancelar',
+                          style: GoogleFonts.poppins(color: Colors.grey[600]),
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          'Sim, Excluir Todos',
+                          style:
+                              GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirm == true) {
+                  await _deleteAllCancelledAppointments();
+                }
+              }
+            },
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -431,6 +686,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                     itemCount: _appointments.length,
                     itemBuilder: (context, index) {
                       final appointment = _appointments[index];
+                      debugPrint(
+                          '=== DEBUG: Exibindo agendamento $index: ${appointment['id']} - Status: ${appointment['status']} ===');
                       final dateTime =
                           (appointment['dateTime'] as Timestamp).toDate();
                       final carData = appointment['car'];
@@ -461,9 +718,6 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                           break;
                         case 'cancelled':
                           statusIcon = Icons.cancel;
-                          break;
-                        case 'no_payment':
-                          statusIcon = Icons.schedule;
                           break;
                         default:
                           statusIcon = Icons.info;
@@ -606,54 +860,136 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                     ),
                                   ),
                                 ],
-                                if (status == 'pending' ||
-                                    status == 'confirmed')
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: TextButton.icon(
-                                      icon: const Icon(Icons.cancel,
-                                          color: Colors.red),
-                                      label: Text('Cancelar',
-                                          style: GoogleFonts.poppins(
-                                              color: Colors.red)),
-                                      onPressed: () async {
-                                        final confirm = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => AlertDialog(
-                                            title: Text('Cancelar Agendamento',
-                                                style: GoogleFonts.poppins(
-                                                    fontWeight:
-                                                        FontWeight.bold)),
-                                            content: Text(
-                                                'Tem certeza que deseja cancelar este agendamento?',
-                                                style: GoogleFonts.poppins()),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () =>
-                                                    Navigator.of(context)
-                                                        .pop(false),
-                                                child: Text('Não',
+                                // Botões de ação baseados no status do agendamento
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      // Botão de cancelamento para agendamentos ativos
+                                      if (status != 'cancelled' &&
+                                          status != 'completed')
+                                        TextButton.icon(
+                                          icon: const Icon(Icons.cancel,
+                                              color: Colors.red),
+                                          label: Text('Cancelar',
+                                              style: GoogleFonts.poppins(
+                                                  color: Colors.red)),
+                                          onPressed: () async {
+                                            String message =
+                                                'Tem certeza que deseja cancelar este agendamento?';
+
+                                            // Mensagem específica para agendamentos confirmados
+                                            if (status == 'confirmed') {
+                                              final amount =
+                                                  appointment['amount']
+                                                      as double?;
+                                              if (amount != null &&
+                                                  amount > 0) {
+                                                message =
+                                                    'Tem certeza que deseja cancelar este agendamento?\n\nR\$ ${amount.toStringAsFixed(2)} será devolvido para sua carteira.';
+                                              }
+                                            }
+
+                                            final confirm =
+                                                await showDialog<bool>(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: Text(
+                                                    'Cancelar Agendamento',
+                                                    style: GoogleFonts.poppins(
+                                                        fontWeight:
+                                                            FontWeight.bold)),
+                                                content: Text(message,
                                                     style:
                                                         GoogleFonts.poppins()),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context)
+                                                            .pop(false),
+                                                    child: Text('Não',
+                                                        style: GoogleFonts
+                                                            .poppins()),
+                                                  ),
+                                                  ElevatedButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context)
+                                                            .pop(true),
+                                                    child: Text('Sim, Cancelar',
+                                                        style: GoogleFonts
+                                                            .poppins()),
+                                                  ),
+                                                ],
                                               ),
-                                              ElevatedButton(
-                                                onPressed: () =>
-                                                    Navigator.of(context)
-                                                        .pop(true),
-                                                child: Text('Sim, Cancelar',
+                                            );
+                                            if (confirm == true) {
+                                              await _cancelAppointment(
+                                                  appointment);
+                                              _loadAppointments();
+                                            }
+                                          },
+                                        ),
+                                      // Botão de excluir para agendamentos concluídos ou cancelados
+                                      if (status == 'completed' ||
+                                          status == 'cancelled')
+                                        TextButton.icon(
+                                          icon: const Icon(Icons.delete_forever,
+                                              color: Colors.red),
+                                          label: Text('Excluir',
+                                              style: GoogleFonts.poppins(
+                                                  color: Colors.red)),
+                                          onPressed: () async {
+                                            final confirm =
+                                                await showDialog<bool>(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: Text(
+                                                    'Excluir Agendamento',
+                                                    style: GoogleFonts.poppins(
+                                                        fontWeight:
+                                                            FontWeight.bold)),
+                                                content: Text(
+                                                    'Tem certeza que deseja excluir este agendamento?\n\nEsta ação não pode ser desfeita.',
                                                     style:
                                                         GoogleFonts.poppins()),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context)
+                                                            .pop(false),
+                                                    child: Text('Não',
+                                                        style: GoogleFonts
+                                                            .poppins()),
+                                                  ),
+                                                  ElevatedButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context)
+                                                            .pop(true),
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                      backgroundColor:
+                                                          Colors.red,
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                    ),
+                                                    child: Text('Sim, Excluir',
+                                                        style: GoogleFonts
+                                                            .poppins()),
+                                                  ),
+                                                ],
                                               ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirm == true) {
-                                          await _cancelAppointment(appointment);
-                                          _loadAppointments();
-                                        }
-                                      },
-                                    ),
+                                            );
+                                            if (confirm == true) {
+                                              await _deleteAppointment(
+                                                  appointment);
+                                              _loadAppointments();
+                                            }
+                                          },
+                                        ),
+                                    ],
                                   ),
+                                ),
                               ],
                             ),
                           ),

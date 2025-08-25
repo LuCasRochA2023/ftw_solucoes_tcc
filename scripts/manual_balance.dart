@@ -2,7 +2,7 @@
 // Copie este código e execute no seu projeto Flutter
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 Future<void> addManualBalance({
   required String userId,
@@ -32,17 +32,14 @@ Future<void> addManualBalance({
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      print('✅ Saldo adicionado com sucesso!');
-      print('💰 Saldo anterior: R\$ ${currentBalance.toStringAsFixed(2)}');
-      print('💰 Saldo atual: R\$ ${newBalance.toStringAsFixed(2)}');
-      print('💰 Valor adicionado: R\$ ${amount.toStringAsFixed(2)}');
+      debugPrint('Saldo adicionado com sucesso!');
+      debugPrint('Saldo anterior: R\$ ${currentBalance.toStringAsFixed(2)}');
+      debugPrint(' Saldo atual: R\$ ${newBalance.toStringAsFixed(2)}');
+      debugPrint('Valor adicionado: R\$ ${amount.toStringAsFixed(2)}');
     } else {
-      print('❌ Usuário não encontrado!');
+      debugPrint(' Usuário não encontrado!');
     }
   } catch (e) {
-    print('❌ Erro: $e');
+    debugPrint('Erro: $e');
   }
 }
-
-// Exemplo de uso:
-// addManualBalance(userId: 'SEU_USER_ID', amount: 100.0);

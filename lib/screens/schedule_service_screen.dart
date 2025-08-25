@@ -13,11 +13,13 @@ import 'home_screen.dart';
 class ScheduleServiceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> services;
   final AuthService authService;
+  final String? rescheduleAppointmentId; // ID do agendamento sendo reagendado
 
   const ScheduleServiceScreen({
     super.key,
     required this.services,
     required this.authService,
+    this.rescheduleAppointmentId, // Parâmetro opcional para reagendamento
   });
 
   @override
@@ -29,6 +31,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
+  String? _tempBookingId; // ID da reserva temporária
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
   final TextEditingController _balanceAmountController =
@@ -80,6 +83,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _initializeAsync();
   }
 
+  @override
+  void dispose() {
+    // Limpar reserva temporária se existir
+    if (_tempBookingId != null) {
+      _removeTemporaryBooking(_tempBookingId);
+    }
+    super.dispose();
+  }
+
   void _initializeAsync() async {
     _serviceTitles = widget.services.map((s) => s['title']).join(', ');
     _mainColor = widget.services.first['color'] ?? Colors.blue;
@@ -88,8 +100,37 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     await _generateTimeSlots();
     await _loadBookedTimeSlots();
     await _loadUserCars();
+
+    // Limpar reservas temporárias expiradas
+    await _cleanupExpiredTemporaryBookings();
+
     if (mounted) {
       setState(() {}); // Atualiza a UI apenas uma vez após toda inicialização
+    }
+  }
+
+  // Função para limpar reservas temporárias expiradas
+  Future<void> _cleanupExpiredTemporaryBookings() async {
+    try {
+      debugPrint('=== DEBUG: Limpando reservas temporárias expiradas ===');
+
+      // Buscar todas as reservas temporárias e filtrar por expiração no código
+      final allTempBookings =
+          await _firestore.collection('temp_bookings').get();
+
+      final expiredBookings = allTempBookings.docs.where((doc) {
+        final expiresAt = doc.data()['expiresAt'] as Timestamp?;
+        return expiresAt != null && expiresAt.toDate().isBefore(DateTime.now());
+      }).toList();
+
+      for (var doc in expiredBookings) {
+        await doc.reference.delete();
+      }
+
+      debugPrint(
+          '=== DEBUG: ${expiredBookings.length} reservas expiradas removidas ===');
+    } catch (e) {
+      debugPrint('Erro ao limpar reservas expiradas: $e');
     }
   }
 
@@ -191,7 +232,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     final startTime = DateTime(2024, 1, 1, 8, 0);
     final endTime = DateTime(2024, 1, 1, 17, 0);
     const step = Duration(minutes: 30);
-    const block = Duration(minutes: 120);
+    const block = Duration(minutes: 60);
 
     DateTime currentSlot = startTime;
     while (currentSlot.add(block).isBefore(endTime.add(step)) ||
@@ -203,7 +244,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Função para verificar se o bloco está livre
   bool _isBlockAvailable(DateTime start, Map<String, String> bookedSlots) {
-    const block = Duration(minutes: 120); // Duração fixa de 2 horas
+    const block = Duration(minutes: 60); // Duração fixa de 1 hora
     DateTime check = start;
     while (check.isBefore(start.add(block))) {
       final slotStr = DateFormat('HH:mm').format(check);
@@ -215,12 +256,263 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return true;
   }
 
+  /// Verifica se o usuário já tem agendamentos pendentes
+  /// Lança exceção se já existe um agendamento pendente (exceto se for reagendamento)
+  Future<void> _checkUserPendingAppointments() async {
+    try {
+      debugPrint(
+          '=== DEBUG: Verificando agendamentos pendentes do usuário ===');
+      debugPrint('RescheduleAppointmentId: ${widget.rescheduleAppointmentId}');
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
+
+      // Buscar agendamentos pendentes do usuário
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('appointments')
+          .where('userId', isEqualTo: user.uid)
+          .where('status', isEqualTo: 'pending')
+          .get();
+
+      debugPrint(
+          'Encontrados ${querySnapshot.docs.length} agendamentos pendentes do usuário');
+
+      // Filtrar agendamentos pendentes, excluindo o que está sendo reagendado
+      final otherPendingAppointments = querySnapshot.docs.where((doc) {
+        return widget.rescheduleAppointmentId == null ||
+            doc.id != widget.rescheduleAppointmentId;
+      }).toList();
+
+      debugPrint(
+          'Agendamentos pendentes (excluindo reagendamento): ${otherPendingAppointments.length}');
+
+      if (otherPendingAppointments.isNotEmpty) {
+        final pendingAppointment = otherPendingAppointments.first;
+        final data = pendingAppointment.data();
+        final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
+        final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
+        final dateSlot = DateFormat('dd/MM/yyyy').format(appointmentDateTime);
+
+        debugPrint('=== DEBUG: Agendamento pendente encontrado ===');
+        debugPrint('Horário: $timeSlot em $dateSlot');
+        debugPrint('ID do agendamento: ${pendingAppointment.id}');
+
+        throw Exception(
+            'Você já possui um agendamento pendente às $timeSlot em $dateSlot. '
+            'Complete o pagamento do agendamento atual antes de fazer um novo.');
+      }
+
+      debugPrint('=== DEBUG: Nenhum agendamento pendente encontrado ===');
+    } catch (e) {
+      debugPrint('Erro ao verificar agendamentos pendentes: $e');
+      rethrow; // Re-lançar a exceção para ser tratada na função chamadora
+    }
+  }
+
+  /// Verificação atômica de disponibilidade de horário usando transações
+  Future<bool> _checkTimeSlotAvailabilityAtomic(DateTime dateTime) async {
+    try {
+      debugPrint('=== DEBUG: Verificação atômica de disponibilidade ===');
+
+      final result = await FirebaseFirestore.instance
+          .runTransaction<bool>((transaction) async {
+        // Buscar agendamentos no período durante a transação
+        final startTime = dateTime.subtract(const Duration(hours: 1));
+        final endTime = dateTime.add(const Duration(hours: 1));
+
+        final querySnapshot = await FirebaseFirestore.instance
+            .collection('appointments')
+            .where('dateTime', isGreaterThanOrEqualTo: startTime)
+            .where('dateTime', isLessThan: endTime)
+            .get();
+
+        // Filtrar agendamentos relevantes
+        final relevantAppointments = querySnapshot.docs.where((doc) {
+          final data = doc.data();
+          final status = data['status'] as String?;
+          final isRelevantStatus = status == 'confirmed' || status == 'pending';
+
+          // Se for reagendamento, excluir o agendamento que está sendo reagendado
+          if (widget.rescheduleAppointmentId != null &&
+              doc.id == widget.rescheduleAppointmentId) {
+            return false;
+          }
+
+          return isRelevantStatus;
+        }).toList();
+
+        // Verificar sobreposições
+        for (var doc in relevantAppointments) {
+          final data = doc.data();
+          final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
+          final status = data['status'] as String?;
+          final appointmentId = doc.id;
+
+          debugPrint(
+              '=== DEBUG: Verificação atômica - agendamento $appointmentId ===');
+          debugPrint('Status: $status');
+          debugPrint(
+              'DateTime: ${DateFormat('dd/MM/yyyy HH:mm').format(appointmentDateTime)}');
+
+          if (_hasTimeOverlap(dateTime, appointmentDateTime)) {
+            // Verificar se há conflito de tipo de lavagem
+            final newServices = {
+              'services': widget.services
+                  .map((s) => {
+                        'title': s['title'],
+                        'type': (s['title'] as String)
+                                .toLowerCase()
+                                .contains('lavagem')
+                            ? 'lavagem'
+                            : 'outro',
+                      })
+                  .toList(),
+            };
+
+            final hasLavagemConflict = _hasLavagemConflict(newServices, data);
+
+            if (hasLavagemConflict) {
+              debugPrint(
+                  '=== DEBUG: CONFLITO DE LAVAGEM DETECTADO NA VERIFICAÇÃO ATÔMICA ===');
+              debugPrint('Agendamento conflitante: $appointmentId');
+              debugPrint('Status: $status');
+              return false; // Horário não disponível
+            } else {
+              debugPrint(
+                  '=== DEBUG: Sem conflito de lavagem na verificação atômica ===');
+            }
+          }
+        }
+
+        debugPrint('=== DEBUG: VERIFICAÇÃO ATÔMICA - HORÁRIO DISPONÍVEL ===');
+        return true; // Horário disponível
+      });
+
+      debugPrint(
+          '=== DEBUG: RESULTADO FINAL DA VERIFICAÇÃO ATÔMICA: $result ===');
+      return result;
+    } catch (e) {
+      debugPrint('Erro na verificação atômica: $e');
+      return false; // Em caso de erro, considerar como não disponível
+    }
+  }
+
+  // Função para criar uma reserva temporária do horário
+  Future<String?> _createTemporaryBooking(DateTime selectedDateTime) async {
+    try {
+      debugPrint('=== DEBUG: Criando reserva temporária ===');
+      debugPrint('Data/Hora selecionada: $selectedDateTime');
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado');
+
+      // Criar documento de reserva temporária
+      final tempBookingRef = await _firestore.collection('temp_bookings').add({
+        'userId': user.uid,
+        'dateTime': Timestamp.fromDate(selectedDateTime),
+        'date': DateFormat('yyyy-MM-dd').format(selectedDateTime),
+        'time': DateFormat('HH:mm').format(selectedDateTime),
+        'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(DateTime.now()
+            .add(const Duration(minutes: 10))), // Expira em 10 minutos
+        'status': 'active'
+      });
+
+      debugPrint(
+          '=== DEBUG: Reserva temporária criada: ${tempBookingRef.id} ===');
+      return tempBookingRef.id;
+    } catch (e) {
+      debugPrint('Erro ao criar reserva temporária: $e');
+      return null;
+    }
+  }
+
+  // Função para verificar se o horário está disponível (incluindo reservas temporárias)
+  Future<bool> _isTimeSlotAvailable(DateTime selectedDateTime) async {
+    try {
+      debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
+      debugPrint('Data/Hora: $selectedDateTime');
+
+      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDateTime);
+      final timeStr = DateFormat('HH:mm').format(selectedDateTime);
+
+      // Verificar agendamentos existentes
+      final appointmentsQuery = await _firestore
+          .collection('appointments')
+          .where('date', isEqualTo: dateStr)
+          .where('time', isEqualTo: timeStr)
+          .where('status', whereIn: ['confirmed', 'pending']).get();
+
+      if (appointmentsQuery.docs.isNotEmpty) {
+        debugPrint(
+            '=== DEBUG: Horário já tem agendamento confirmado/pendente ===');
+        return false;
+      }
+
+      // Verificar reservas temporárias ativas (simplificado para evitar erro de índice)
+      final tempBookingsQuery = await _firestore
+          .collection('temp_bookings')
+          .where('date', isEqualTo: dateStr)
+          .where('time', isEqualTo: timeStr)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      // Filtrar por expiração no código para evitar índice composto
+      final activeTempBookings = tempBookingsQuery.docs.where((doc) {
+        final expiresAt = doc.data()['expiresAt'] as Timestamp?;
+        return expiresAt != null && expiresAt.toDate().isAfter(DateTime.now());
+      }).toList();
+
+      if (activeTempBookings.isNotEmpty) {
+        debugPrint('=== DEBUG: Horário tem reserva temporária ativa ===');
+        return false;
+      }
+
+      debugPrint('=== DEBUG: Horário está disponível ===');
+      return true;
+    } catch (e) {
+      debugPrint('Erro ao verificar disponibilidade: $e');
+      return false;
+    }
+  }
+
+  // Função para remover reserva temporária
+  Future<void> _removeTemporaryBooking(String? tempBookingId) async {
+    if (tempBookingId == null) return;
+
+    try {
+      debugPrint('=== DEBUG: Removendo reserva temporária: $tempBookingId ===');
+      await _firestore.collection('temp_bookings').doc(tempBookingId).delete();
+      debugPrint('=== DEBUG: Reserva temporária removida ===');
+    } catch (e) {
+      debugPrint('Erro ao remover reserva temporária: $e');
+    }
+  }
+
+  // Função para confirmar reserva temporária (converter em agendamento)
+  Future<void> _confirmTemporaryBooking(
+      String tempBookingId, String appointmentId) async {
+    try {
+      debugPrint('=== DEBUG: Confirmando reserva temporária ===');
+      await _firestore.collection('temp_bookings').doc(tempBookingId).update({
+        'appointmentId': appointmentId,
+        'status': 'confirmed',
+        'confirmedAt': FieldValue.serverTimestamp()
+      });
+      debugPrint('=== DEBUG: Reserva temporária confirmada ===');
+    } catch (e) {
+      debugPrint('Erro ao confirmar reserva temporária: $e');
+    }
+  }
+
   /// Verifica se um horário está disponível para agendamento
   /// Lança exceção se já existe um agendamento confirmado no mesmo horário
   Future<void> _checkTimeSlotAvailability(DateTime dateTime) async {
     try {
       debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
       debugPrint('Horário selecionado: ${dateTime.toString()}');
+      debugPrint(
+          'Horário formatado: ${DateFormat('dd/MM/yyyy HH:mm').format(dateTime)}');
 
       // Buscar agendamentos no mesmo horário (com tolerância de 1 hora)
       final startTime = dateTime.subtract(const Duration(hours: 1));
@@ -230,17 +522,33 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final querySnapshot = await FirebaseFirestore.instance
           .collection('appointments')
           .where('dateTime', isGreaterThanOrEqualTo: startTime)
-          .where('dateTime', isLessThanOrEqualTo: endTime)
+          .where('dateTime', isLessThan: endTime)
           .get();
 
       debugPrint(
           'Encontrados ${querySnapshot.docs.length} agendamentos no período');
 
-      // Filtrar apenas agendamentos confirmados e pendentes
+      // Filtrar apenas agendamentos confirmados, pendentes e sem pagamento, excluindo o que está sendo reagendado
       final relevantAppointments = querySnapshot.docs.where((doc) {
         final data = doc.data();
         final status = data['status'] as String?;
-        return status == 'confirmed' || status == 'pending';
+        final isRelevantStatus = status == 'confirmed' || status == 'pending';
+
+        debugPrint('=== DEBUG: Verificando agendamento ${doc.id} ===');
+        debugPrint('Status: $status');
+        debugPrint('IsRelevantStatus: $isRelevantStatus');
+        debugPrint(
+            'RescheduleAppointmentId: ${widget.rescheduleAppointmentId}');
+
+        // Se for reagendamento, excluir o agendamento que está sendo reagendado
+        if (widget.rescheduleAppointmentId != null &&
+            doc.id == widget.rescheduleAppointmentId) {
+          debugPrint('Excluindo agendamento que está sendo reagendado');
+          return false;
+        }
+
+        debugPrint('Incluindo agendamento: $isRelevantStatus');
+        return isRelevantStatus;
       }).toList();
 
       debugPrint(
@@ -253,22 +561,80 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         final appointmentId = doc.id;
 
         // Verificar se há sobreposição de horário
-        if (_hasTimeOverlap(dateTime, appointmentDateTime)) {
-          final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
-          final dateSlot = DateFormat('dd/MM/yyyy').format(appointmentDateTime);
+        debugPrint(
+            '=== DEBUG: Verificando sobreposição com agendamento $appointmentId ===');
+        debugPrint('Status do agendamento: $status');
+        debugPrint(
+            'Horário novo: ${DateFormat('dd/MM/yyyy HH:mm').format(dateTime)}');
+        debugPrint(
+            'Horário existente: ${DateFormat('dd/MM/yyyy HH:mm').format(appointmentDateTime)}');
 
-          debugPrint('=== DEBUG: Conflito de horário detectado ===');
-          debugPrint('Horário conflitante: $timeSlot em $dateSlot');
-          debugPrint('Status do agendamento: $status');
-          debugPrint('ID do agendamento: $appointmentId');
+        debugPrint('=== DEBUG: Chamando verificação de sobreposição ===');
+        final hasTimeOverlap = _hasTimeOverlap(dateTime, appointmentDateTime);
+        debugPrint(
+            '=== DEBUG: Resultado da verificação de sobreposição: $hasTimeOverlap ===');
 
-          throw Exception(
-              'Horário não disponível! Já existe um agendamento às $timeSlot em $dateSlot. '
-              'Por favor, escolha outro horário.');
+        if (hasTimeOverlap) {
+          // Verificar se há conflito de tipo de lavagem
+          final newServices = {
+            'services': widget.services
+                .map((s) => {
+                      'title': s['title'],
+                      'type': (s['title'] as String)
+                              .toLowerCase()
+                              .contains('lavagem')
+                          ? 'lavagem'
+                          : 'outro',
+                    })
+                .toList(),
+          };
+
+          final hasLavagemConflict = _hasLavagemConflict(newServices, data);
+
+          if (hasLavagemConflict) {
+            final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
+            final dateSlot =
+                DateFormat('dd/MM/yyyy').format(appointmentDateTime);
+
+            debugPrint('=== DEBUG: CONFLITO DE LAVAGEM DETECTADO ===');
+            debugPrint('Horário conflitante: $timeSlot em $dateSlot');
+            debugPrint('Status do agendamento: $status');
+            debugPrint('ID do agendamento: $appointmentId');
+
+            throw Exception(
+                'Horário não disponível! Já existe um agendamento de lavagem às $timeSlot em $dateSlot. '
+                'Apenas um tipo de lavagem é permitido por horário. '
+                'Por favor, escolha outro horário.');
+          } else {
+            debugPrint(
+                '=== DEBUG: Sem conflito de lavagem - permitindo agendamento ===');
+          }
+        } else {
+          debugPrint(
+              '=== DEBUG: Sem conflito de horário para este agendamento ===');
         }
       }
 
-      debugPrint('=== DEBUG: Horário disponível para agendamento ===');
+      debugPrint(
+          '=== DEBUG: TODOS OS AGENDAMENTOS VERIFICADOS - HORÁRIO DISPONÍVEL ===');
+
+      // Verificação adicional usando transação atômica
+      debugPrint('=== DEBUG: Iniciando verificação atômica ===');
+      final isAvailableAtomic =
+          await _checkTimeSlotAvailabilityAtomic(dateTime);
+      debugPrint(
+          '=== DEBUG: Resultado da verificação atômica: $isAvailableAtomic ===');
+
+      if (!isAvailableAtomic) {
+        debugPrint('=== DEBUG: CONFLITO DETECTADO NA VERIFICAÇÃO ATÔMICA ===');
+        throw Exception(
+            'Horário não disponível! Conflito de lavagem detectado na verificação atômica. '
+            'Apenas um tipo de lavagem é permitido por horário. '
+            'Por favor, escolha outro horário.');
+      }
+
+      debugPrint(
+          '=== DEBUG: VERIFICAÇÃO ATÔMICA CONCLUÍDA - HORÁRIO CONFIRMADO DISPONÍVEL ===');
     } catch (e) {
       debugPrint('Erro ao verificar disponibilidade: $e');
       rethrow; // Re-lançar a exceção para ser tratada na função chamadora
@@ -277,10 +643,75 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   /// Verifica se há sobreposição entre dois horários
   bool _hasTimeOverlap(DateTime newAppointment, DateTime existingAppointment) {
-    // Considerar sobreposição se os horários estão a menos de 2 horas de diferença
-    final difference =
-        (newAppointment.difference(existingAppointment).abs().inMinutes);
-    return difference < 120; // 2 horas = 120 minutos
+    // Cada agendamento ocupa 1 hora (60 minutos)
+    const blockDuration = Duration(minutes: 60);
+
+    // Calcular o fim do agendamento existente
+    final existingEnd = existingAppointment.add(blockDuration);
+
+    // Calcular o fim do novo agendamento
+    final newEnd = newAppointment.add(blockDuration);
+
+    // Logs para debug
+    debugPrint('=== DEBUG: Verificação de sobreposição ===');
+    debugPrint(
+        'Novo agendamento: ${DateFormat('dd/MM/yyyy HH:mm').format(newAppointment)} - ${DateFormat('dd/MM/yyyy HH:mm').format(newEnd)}');
+    debugPrint(
+        'Agendamento existente: ${DateFormat('dd/MM/yyyy HH:mm').format(existingAppointment)} - ${DateFormat('dd/MM/yyyy HH:mm').format(existingEnd)}');
+    debugPrint(
+        'Condição 1: novo início < fim existente: ${newAppointment.isBefore(existingEnd)}');
+    debugPrint(
+        'Condição 2: novo fim > início existente: ${newEnd.isAfter(existingAppointment)}');
+
+    // Há sobreposição se:
+    // 1. O novo agendamento começa antes do fim do existente, E
+    // 2. O fim do novo agendamento é depois do início do existente
+    // OU se os horários são exatamente iguais
+    final condition1 = newAppointment.isBefore(existingEnd);
+    final condition2 = newEnd.isAfter(existingAppointment);
+    final condition3 = newAppointment.isAtSameMomentAs(existingAppointment);
+
+    final hasOverlap = (condition1 && condition2) || condition3;
+
+    debugPrint('Condição 1 (novo início < fim existente): $condition1');
+    debugPrint('Condição 2 (novo fim > início existente): $condition2');
+    debugPrint('Condição 3 (horários iguais): $condition3');
+    debugPrint('Resultado final: $hasOverlap');
+    return hasOverlap;
+  }
+
+  /// Verifica se há conflito de tipo de lavagem
+  bool _hasLavagemConflict(
+      Map<String, dynamic> newServices, Map<String, dynamic> existingServices) {
+    // Verificar se ambos os agendamentos contêm serviços de lavagem
+    final newServicesList = newServices['services'] as List? ?? [];
+    final existingServicesList = existingServices['services'] as List? ?? [];
+
+    // Verificar se há serviços de lavagem no novo agendamento
+    final hasNewLavagem = newServicesList.any((service) {
+      final title = (service['title'] as String? ?? '').toLowerCase();
+      return title.contains('lavagem');
+    });
+
+    // Verificar se há serviços de lavagem no agendamento existente
+    final hasExistingLavagem = existingServicesList.any((service) {
+      final title = (service['title'] as String? ?? '').toLowerCase();
+      return title.contains('lavagem');
+    });
+
+    // Se ambos têm lavagem, há conflito
+    final hasConflict = hasNewLavagem && hasExistingLavagem;
+
+    debugPrint('=== DEBUG: Verificação de conflito de lavagem ===');
+    debugPrint(
+        'Novos serviços: ${newServicesList.map((s) => s['title']).toList()}');
+    debugPrint(
+        'Serviços existentes: ${existingServicesList.map((s) => s['title']).toList()}');
+    debugPrint('Tem lavagem no novo: $hasNewLavagem');
+    debugPrint('Tem lavagem no existente: $hasExistingLavagem');
+    debugPrint('Há conflito: $hasConflict');
+
+    return hasConflict;
   }
 
   Future<void> _loadBookedTimeSlots() async {
@@ -317,6 +748,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
         final status = data['status'] as String?;
+
+        debugPrint('=== DEBUG: Verificando agendamento para exibição ===');
+        debugPrint('ID: ${doc.id}');
+        debugPrint('Status: $status');
+        debugPrint('DateTime: ${data['dateTime']}');
 
         // Considerar agendamentos confirmados e pendentes como ocupados
         if (status == 'confirmed' || status == 'pending') {
@@ -493,17 +929,48 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       // Se não há valor para pagar, agendar normalmente
       if (totalAmount <= 0) {
+        debugPrint('=== DEBUG: Serviço gratuito - agendando diretamente ===');
         await _proceedWithSchedulingAndGetId();
         return;
       }
 
       // Se há saldo, mostrar pop-up de uso do saldo
       if (currentBalance > 0) {
+        debugPrint(
+            '=== DEBUG: Há saldo - mostrando diálogo de uso do saldo ===');
         setState(() => _isLoading = false);
         await _showBalanceUsageDialog(currentBalance, totalAmount);
       } else {
-        // Se não há saldo, agendar normalmente
-        await _proceedWithSchedulingAndGetId();
+        // Se não há saldo, agendar e redirecionar para pagamento
+        debugPrint(
+            '=== DEBUG: Não há saldo - agendando e redirecionando para pagamento ===');
+        final appointmentId = await _proceedWithSchedulingAndGetId();
+        debugPrint('=== DEBUG: AppointmentId obtido: $appointmentId ===');
+
+        if (appointmentId != null && mounted) {
+          debugPrint('=== DEBUG: Redirecionando para tela de pagamento ===');
+          debugPrint('Valor total: R\$ ${totalAmount.toStringAsFixed(2)}');
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PaymentScreen(
+                amount: totalAmount,
+                serviceTitle: _serviceTitles,
+                serviceDescription: widget.services
+                    .map((s) => s['description'] as String)
+                    .join(', '),
+                carId: _selectedCar!['id'],
+                carModel: _selectedCar!['model'],
+                carPlate: _selectedCar!['plate'],
+                appointmentId: appointmentId,
+              ),
+            ),
+          );
+        } else {
+          debugPrint(
+              '=== DEBUG: Erro - AppointmentId é null ou widget não está montado ===');
+        }
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -836,11 +1303,30 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           0.0, currentBalance > totalAmount ? totalAmount : currentBalance);
       final remainingAmount = totalAmount - clampedBalance;
 
+      debugPrint('=== DEBUG: Cálculo de saldo ===');
+      debugPrint('Saldo atual: R\$ ${currentBalance.toStringAsFixed(2)}');
+      debugPrint(
+          'Valor total do serviço: R\$ ${totalAmount.toStringAsFixed(2)}');
+      debugPrint(
+          'Valor digitado pelo usuário: R\$ ${balanceToUse.toStringAsFixed(2)}');
+      debugPrint(
+          'Valor limitado (clamped): R\$ ${clampedBalance.toStringAsFixed(2)}');
+      debugPrint('Valor restante: R\$ ${remainingAmount.toStringAsFixed(2)}');
+
       // Agendar o serviço e obter o ID do agendamento
       final appointmentId = await _proceedWithSchedulingAndGetId();
 
       // Se ainda há valor para pagar, ir para tela de pagamento
+      debugPrint('=== DEBUG: Verificando redirecionamento ===');
+      debugPrint('Valor restante > 0: ${remainingAmount > 0}');
+      debugPrint('AppointmentId não é null: ${appointmentId != null}');
+
       if (remainingAmount > 0 && appointmentId != null) {
+        debugPrint('=== DEBUG: Redirecionando para tela de pagamento ===');
+        debugPrint('Valor a pagar: R\$ ${remainingAmount.toStringAsFixed(2)}');
+        debugPrint(
+            'Valor usado do saldo: R\$ ${clampedBalance.toStringAsFixed(2)}');
+
         if (mounted) {
           Navigator.push(
             context,
@@ -863,6 +1349,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         }
       } else if (appointmentId != null) {
         // Se não há valor restante, processar o pagamento completo com saldo
+        debugPrint('=== DEBUG: Processando pagamento completo com saldo ===');
+        debugPrint(
+            'Valor usado do saldo: R\$ ${clampedBalance.toStringAsFixed(2)}');
+
         await _processBalancePayment(clampedBalance, appointmentId);
         if (mounted) {
           _showSuccessDialog();
@@ -884,6 +1374,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<void> _processBalancePayment(
       double balanceToUse, String appointmentId) async {
     try {
+      debugPrint('=== DEBUG: Processando pagamento com saldo ===');
+      debugPrint('Valor a debitar: R\$ ${balanceToUse.toStringAsFixed(2)}');
+      debugPrint('ID do agendamento: $appointmentId');
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw Exception('Usuário não autenticado');
 
@@ -895,6 +1389,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           0.0;
 
       final finalBalance = currentBalance - balanceToUse;
+
+      debugPrint('Saldo atual: R\$ ${currentBalance.toStringAsFixed(2)}');
+      debugPrint('Saldo final: R\$ ${finalBalance.toStringAsFixed(2)}');
 
       // Atualizar saldo do usuário
       await FirebaseFirestore.instance
@@ -917,6 +1414,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           .collection('appointments')
           .doc(appointmentId)
           .update({'status': 'confirmed'});
+
+      // Recarregar horários ocupados após atualizar o status
+      if (mounted) {
+        await _loadBookedTimeSlots();
+      }
     } catch (e) {
       throw Exception('Erro ao processar pagamento com saldo: $e');
     }
@@ -935,6 +1437,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[0]),
         int.parse(timeParts[1]),
       );
+
+      // Verificar se o usuário já tem agendamentos pendentes
+      await _checkUserPendingAppointments();
 
       // Verificar se já existe um agendamento confirmado no mesmo horário
       await _checkTimeSlotAvailability(dateTime);
@@ -970,7 +1475,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       // Determinar status baseado no valor
       String appointmentStatus = 'pending';
       if (totalAmount == 0) {
-        appointmentStatus = 'no_payment';
+        appointmentStatus =
+            'confirmed'; // Agendamentos gratuitos são automaticamente confirmados
       }
 
       // Salvar agendamento único e obter o id
@@ -989,14 +1495,50 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         appointmentData['optionalServices'] = optionalServices;
       }
 
+      // Se for um reagendamento, cancelar o agendamento anterior
+      if (widget.rescheduleAppointmentId != null) {
+        debugPrint(
+            '=== DEBUG: Cancelando agendamento anterior para reagendamento ===');
+        debugPrint(
+            'AppointmentId a cancelar: ${widget.rescheduleAppointmentId}');
+
+        await FirebaseFirestore.instance
+            .collection('appointments')
+            .doc(widget.rescheduleAppointmentId)
+            .update({'status': 'cancelled'});
+
+        debugPrint('=== DEBUG: Agendamento anterior cancelado com sucesso ===');
+      }
+
       final docRef = await FirebaseFirestore.instance
           .collection('appointments')
           .add(appointmentData);
 
+      debugPrint('=== DEBUG: Agendamento criado com sucesso ===');
+      debugPrint('ID do agendamento: ${docRef.id}');
+
+      // Confirmar reserva temporária se existir
+      if (_tempBookingId != null) {
+        await _confirmTemporaryBooking(_tempBookingId!, docRef.id);
+        _tempBookingId = null; // Limpar a variável
+      }
+
       if (mounted) {
+        // Recarregar horários ocupados após criar o agendamento
+        await _loadBookedTimeSlots();
+
         // Verificar se há serviços com valor para determinar o fluxo
-        if (_hasServicesWithPrice() && totalAmount > 0) {
-          // Redirecionar para tela de pagamento
+        if (!_hasServicesWithPrice() || totalAmount == 0) {
+          // Mostrar dialog de sucesso para serviços sem valor
+          debugPrint(
+              '=== DEBUG: Serviço sem valor - mostrando diálogo de sucesso ===');
+          _showSuccessDialog();
+        } else {
+          // Se há valor para pagar, redirecionar para tela de pagamento
+          debugPrint(
+              '=== DEBUG: Serviço com valor - redirecionando para pagamento ===');
+          debugPrint('Valor total: R\$ ${totalAmount.toStringAsFixed(2)}');
+
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -1013,12 +1555,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               ),
             ),
           );
-        } else {
-          // Mostrar dialog de sucesso para serviços sem valor
-          _showSuccessDialog();
         }
       }
 
+      debugPrint('=== DEBUG: Retornando ID do agendamento: ${docRef.id} ===');
       return docRef.id;
     } catch (e) {
       debugPrint('Error scheduling service: $e');
@@ -1618,9 +2158,48 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           return Tooltip(
                             message: 'Disponível',
                             child: InkWell(
-                              onTap: () {
+                              onTap: () async {
+                                // Verificar se o horário ainda está disponível
+                                final isAvailable =
+                                    await _isTimeSlotAvailable(slotTime);
+                                if (!isAvailable) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'Este horário não está mais disponível. Por favor, escolha outro horário.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                // Criar reserva temporária
+                                final tempBookingId =
+                                    await _createTemporaryBooking(slotTime);
+                                if (tempBookingId == null) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                            'Erro ao reservar horário. Tente novamente.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                // Remover reserva temporária anterior se existir
+                                if (_tempBookingId != null) {
+                                  await _removeTemporaryBooking(_tempBookingId);
+                                }
+
                                 setState(() {
                                   _selectedTime = timeSlot;
+                                  _tempBookingId =
+                                      tempBookingId; // Adicionar variável para armazenar o ID da reserva
                                 });
                               },
                               child: Container(
