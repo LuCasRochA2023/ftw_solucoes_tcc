@@ -38,7 +38,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
-        throw Exception('Usuário não autenticado');
+        throw ('Usuário não autenticado');
       }
 
       final credential = EmailAuthProvider.credential(

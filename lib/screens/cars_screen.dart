@@ -60,7 +60,7 @@ class _CarsScreenState extends State<CarsScreen> {
 
     try {
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       final String extension =
           _imageFile!.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
@@ -95,7 +95,7 @@ class _CarsScreenState extends State<CarsScreen> {
 
     try {
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       String? photoUrl;
       if (_imageFile != null) {

@@ -27,7 +27,7 @@ class AuthService {
         password: password,
       );
     } catch (e) {
-      throw Exception('Erro ao fazer login: ${e.toString()}');
+      throw 'Erro ao fazer login: ${e.toString()}';
     }
   }
 
@@ -35,21 +35,20 @@ class AuthService {
     try {
       // Validar dados antes de criar o usuário
       if (!ValidationUtils.isValidName(name)) {
-        throw Exception('Nome deve ter pelo menos 2 palavras e apenas letras');
+        throw 'Nome deve ter pelo menos 2 palavras e apenas letras';
       }
 
       if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
           .hasMatch(email)) {
-        throw Exception('Email inválido');
+        throw 'Email inválido';
       }
 
       if (password.length < 8) {
-        throw Exception('A senha deve ter pelo menos 8 caracteres');
+        throw 'A senha deve ter pelo menos 8 caracteres';
       }
 
       if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
-        throw Exception(
-            'A senha deve conter letra maiúscula, minúscula e número');
+        throw 'A senha deve conter letra maiúscula, minúscula e número';
       }
 
       final userCredential = await _auth.createUserWithEmailAndPassword(
@@ -65,7 +64,7 @@ class AuthService {
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      throw Exception('Erro ao criar conta: ${e.toString()}');
+      throw 'Erro ao criar conta: ${e.toString()}';
     }
   }
 
@@ -73,14 +72,14 @@ class AuthService {
     try {
       await _auth.signOut();
     } catch (e) {
-      throw Exception('Erro ao fazer logout: ${e.toString()}');
+      throw 'Erro ao fazer logout: ${e.toString()}';
     }
   }
 
   Future<void> updateProfile({String? displayName}) async {
     try {
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw 'Usuário não autenticado';
 
       if (displayName != null) {
         await user.updateDisplayName(displayName);
@@ -89,14 +88,14 @@ class AuthService {
         });
       }
     } catch (e) {
-      throw Exception('Erro ao atualizar perfil: ${e.toString()}');
+      throw 'Erro ao atualizar perfil: ${e.toString()}';
     }
   }
 
   Future<List<Map<String, dynamic>>> getServiceHistory() async {
     try {
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw 'Usuário não autenticado';
 
       final snapshot = await _firestore
           .collection('services')
@@ -106,7 +105,7 @@ class AuthService {
 
       return snapshot.docs.map((doc) => doc.data()).toList();
     } catch (e) {
-      throw Exception('Erro ao carregar histórico: ${e.toString()}');
+      throw 'Erro ao carregar histórico: ${e.toString()}';
     }
   }
 
@@ -115,16 +114,15 @@ class AuthService {
       // Validar dados antes de criar o usuário
       if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
           .hasMatch(email)) {
-        throw Exception('Email inválido');
+        throw 'Email inválido';
       }
 
       if (password.length < 8) {
-        throw Exception('A senha deve ter pelo menos 8 caracteres');
+        throw 'A senha deve ter pelo menos 8 caracteres';
       }
 
       if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
-        throw Exception(
-            'A senha deve conter letra maiúscula, minúscula e número');
+        throw 'A senha deve conter letra maiúscula, minúscula e número';
       }
 
       return await _auth.createUserWithEmailAndPassword(
@@ -151,21 +149,20 @@ class AuthService {
 
       // Validar dados antes de criar o usuário
       if (!ValidationUtils.isValidName(name)) {
-        throw Exception('Nome deve ter pelo menos 2 palavras e apenas letras');
+        throw 'Nome deve ter pelo menos 2 palavras e apenas letras';
       }
 
       if (!RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
           .hasMatch(email)) {
-        throw Exception('Email inválido');
+        throw 'Email inválido';
       }
 
       if (password.length < 8) {
-        throw Exception('A senha deve ter pelo menos 8 caracteres');
+        throw 'A senha deve ter pelo menos 8 caracteres';
       }
 
       if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(password)) {
-        throw Exception(
-            'A senha deve conter letra maiúscula, minúscula e número');
+        throw 'A senha deve conter letra maiúscula, minúscula e número';
       }
 
       final UserCredential result = await _auth.createUserWithEmailAndPassword(
@@ -224,7 +221,7 @@ class AuthService {
       } catch (deleteError) {
         debugPrint('Erro ao tentar excluir usuário após falha: $deleteError');
       }
-      throw Exception('Failed to create user: $e');
+      throw 'Failed to create user: $e';
     }
   }
 
@@ -236,7 +233,7 @@ class AuthService {
       throw _handleAuthError(e);
     } catch (e) {
       debugPrint('Erro inesperado ao enviar email de reset: $e');
-      throw Exception('Failed to reset password: $e');
+      throw 'Failed to reset password: $e';
     }
   }
 
@@ -246,10 +243,10 @@ class AuthService {
       if (user != null) {
         await user.updatePassword(newPassword);
       } else {
-        throw Exception('No user is currently signed in');
+        throw 'No user is currently signed in';
       }
     } catch (e) {
-      throw Exception('Failed to update password: $e');
+      throw 'Failed to update password: $e';
     }
   }
 
@@ -257,7 +254,7 @@ class AuthService {
       String currentPassword, String newPassword) async {
     final user = _auth.currentUser;
     if (user == null) {
-      throw Exception('Usuário não está logado');
+      throw 'Usuário não está logado';
     }
 
     // Reauthenticate user with current password

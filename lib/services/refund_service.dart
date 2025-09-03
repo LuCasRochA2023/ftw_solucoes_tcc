@@ -64,7 +64,7 @@ class RefundService {
       debugPrint('Saldo atual: R\$ ${newBalance.toStringAsFixed(2)}');
     } catch (e) {
       debugPrint('Erro ao devolver dinheiro para carteira no cancelamento: $e');
-      throw Exception('Erro ao processar devolução: $e');
+      throw ('Erro ao processar devolução: $e');
     }
   }
 

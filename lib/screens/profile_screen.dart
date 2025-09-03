@@ -213,11 +213,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final user = widget.authService.currentUser;
       if (user == null) {
-        throw Exception('Usuário não autenticado');
+        throw ('Usuário não autenticado');
       }
 
       if (_storage.app.options.projectId.isEmpty) {
-        throw Exception('Firebase Storage não inicializado corretamente');
+        throw ('Firebase Storage não inicializado corretamente');
       }
 
       final picker = ImagePicker();
@@ -391,12 +391,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final user = widget.authService.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       // Verificar se CPF já está cadastrado por outro usuário
       final isDuplicate = await _isCpfAlreadyRegistered(_cpfController.text);
       if (isDuplicate) {
-        throw Exception('CPF já está cadastrado no sistema');
+        throw ('CPF já está cadastrado no sistema');
       }
 
       // Preparar dados do endereço
@@ -416,7 +416,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           address['neighborhood']!.isEmpty ||
           address['city']!.isEmpty ||
           address['state']!.isEmpty) {
-        throw Exception(
+        throw (
             'Por favor, preencha todos os campos obrigatórios do endereço');
       }
 

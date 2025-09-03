@@ -46,7 +46,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     try {
       final user = _auth.currentUser;
       if (user == null) {
-        throw Exception('Usuário não autenticado');
+        throw ('Usuário não autenticado');
       }
 
       debugPrint('=== DEBUG: Usuário autenticado: ${user.uid} ===');

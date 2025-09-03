@@ -190,38 +190,59 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<void> _generateTimeSlots() async {
     _timeSlots.clear();
     try {
+      debugPrint(
+          '=== DEBUG: Gerando horários para data: ${_selectedDate.toString()} ===');
+
       // Buscar horários disponíveis do Firebase
       final snapshot = await _firestore
           .collection('disponibilidade_clientes')
           .where('isAvailableForClients', isEqualTo: true)
           .get();
 
+      debugPrint(
+          '=== DEBUG: Encontrados ${snapshot.docs.length} documentos na coleção disponibilidade_clientes ===');
+
       final Set<String> availableSlots = {};
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        final date = data['date'] as String;
-        final startTime = data['startTime'] as String;
+        final date = data['date'] as String?;
+        final startTime = data['startTime'] as String?;
 
-        // Verificar se é para a data selecionada
-        final selectedDateStr =
-            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
-        if (date == selectedDateStr) {
-          availableSlots.add(startTime);
+        debugPrint(
+            '=== DEBUG: Documento - date: $date, startTime: $startTime ===');
+
+        if (date != null && startTime != null) {
+          // Verificar se é para a data selecionada
+          final selectedDateStr =
+              '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
+          debugPrint(
+              '=== DEBUG: Comparando datas - Documento: $date, Selecionada: $selectedDateStr ===');
+
+          if (date == selectedDateStr) {
+            availableSlots.add(startTime);
+            debugPrint('=== DEBUG: Horário adicionado: $startTime ===');
+          }
         }
       }
+
+      debugPrint(
+          '=== DEBUG: Total de horários encontrados: ${availableSlots.length} ===');
 
       // Adicionar horários disponíveis
       _timeSlots.addAll(availableSlots.toList());
       _timeSlots.sort();
 
-      // Se não há horários disponíveis, mostrar mensagem
+      // Se não há horários disponíveis, usar fallback
       if (_timeSlots.isEmpty) {
         debugPrint(
-            'Nenhum horário disponível encontrado para a data selecionada');
-        // Não usar fallback - deixar a lista vazia para mostrar que não há disponibilidade
+            '=== DEBUG: Nenhum horário disponível - usando fallback ===');
+        _generateFallbackTimeSlots();
+      } else {
+        debugPrint('=== DEBUG: Horários finais: $_timeSlots ===');
       }
     } catch (e) {
-      debugPrint('Erro ao carregar horários: $e');
+      debugPrint('=== DEBUG: Erro ao carregar horários: $e ===');
       // Fallback: horários padrão se houver erro
       _generateFallbackTimeSlots();
     }
@@ -229,30 +250,39 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   void _generateFallbackTimeSlots() {
     _timeSlots.clear();
+    debugPrint('=== DEBUG: Gerando horários de fallback ===');
+
+    // Horários de 8:00 às 18:00 com intervalos de 30 minutos
     final startTime = DateTime(2024, 1, 1, 8, 0);
-    final endTime = DateTime(2024, 1, 1, 17, 0);
+    final endTime = DateTime(2024, 1, 1, 18, 0);
     const step = Duration(minutes: 30);
-    const block = Duration(minutes: 60);
 
     DateTime currentSlot = startTime;
-    while (currentSlot.add(block).isBefore(endTime.add(step)) ||
-        currentSlot.add(block).isAtSameMomentAs(endTime)) {
-      _timeSlots.add(DateFormat('HH:mm').format(currentSlot));
+    while (currentSlot.isBefore(endTime)) {
+      final timeStr = DateFormat('HH:mm').format(currentSlot);
+      _timeSlots.add(timeStr);
+      debugPrint('=== DEBUG: Horário de fallback adicionado: $timeStr ===');
       currentSlot = currentSlot.add(step);
     }
+
+    debugPrint(
+        '=== DEBUG: Total de horários de fallback: ${_timeSlots.length} ===');
   }
 
   // Função para verificar se o bloco está livre
   bool _isBlockAvailable(DateTime start, Map<String, String> bookedSlots) {
-    const block = Duration(minutes: 60); // Duração fixa de 1 hora
-    DateTime check = start;
-    while (check.isBefore(start.add(block))) {
-      final slotStr = DateFormat('HH:mm').format(check);
-      if (bookedSlots.containsKey(slotStr)) {
-        return false;
-      }
-      check = check.add(const Duration(minutes: 30));
+    debugPrint('=== DEBUG: Verificando disponibilidade do bloco ===');
+    debugPrint('Horário de início: ${DateFormat('HH:mm').format(start)}');
+    debugPrint('Slots ocupados: ${bookedSlots.keys.toList()}');
+
+    final slotStr = DateFormat('HH:mm').format(start);
+
+    if (bookedSlots.containsKey(slotStr)) {
+      debugPrint('=== DEBUG: Slot ocupado: $slotStr ===');
+      return false;
     }
+
+    debugPrint('=== DEBUG: Slot disponível: $slotStr ===');
     return true;
   }
 
@@ -265,7 +295,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('RescheduleAppointmentId: ${widget.rescheduleAppointmentId}');
 
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       // Buscar agendamentos pendentes do usuário
       final querySnapshot = await FirebaseFirestore.instance
@@ -297,8 +327,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         debugPrint('Horário: $timeSlot em $dateSlot');
         debugPrint('ID do agendamento: ${pendingAppointment.id}');
 
-        throw Exception(
-            'Você já possui um agendamento pendente às $timeSlot em $dateSlot. '
+        throw ('Você já possui um agendamento pendente às $timeSlot em $dateSlot. '
             'Complete o pagamento do agendamento atual antes de fazer um novo.');
       }
 
@@ -404,7 +433,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('Data/Hora selecionada: $selectedDateTime');
 
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       // Criar documento de reserva temporária
       final tempBookingRef = await _firestore.collection('temp_bookings').add({
@@ -601,8 +630,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
             debugPrint('Status do agendamento: $status');
             debugPrint('ID do agendamento: $appointmentId');
 
-            throw Exception(
-                'Horário não disponível! Já existe um agendamento de lavagem às $timeSlot em $dateSlot. '
+            throw ('Horário não disponível! Já existe um agendamento de lavagem às $timeSlot em $dateSlot. '
                 'Apenas um tipo de lavagem é permitido por horário. '
                 'Por favor, escolha outro horário.');
           } else {
@@ -627,8 +655,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       if (!isAvailableAtomic) {
         debugPrint('=== DEBUG: CONFLITO DETECTADO NA VERIFICAÇÃO ATÔMICA ===');
-        throw Exception(
-            'Horário não disponível! Conflito de lavagem detectado na verificação atômica. '
+        throw ('Horário não disponível! Conflito de lavagem detectado na verificação atômica. '
             'Apenas um tipo de lavagem é permitido por horário. '
             'Por favor, escolha outro horário.');
       }
@@ -916,7 +943,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       // Buscar saldo do usuário
       final userDoc = await FirebaseFirestore.instance
@@ -1293,7 +1320,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       // Obter o valor que o usuário quer usar do saldo
       final balanceToUse =
@@ -1302,6 +1329,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final clampedBalance = balanceToUse.clamp(
           0.0, currentBalance > totalAmount ? totalAmount : currentBalance);
       final remainingAmount = totalAmount - clampedBalance;
+
+      debugPrint('=== DEBUG: Valores calculados ===');
+      debugPrint('balanceToUse (digitado): $balanceToUse');
+      debugPrint('clampedBalance (limitado): $clampedBalance');
+      debugPrint('totalAmount: $totalAmount');
+      debugPrint('remainingAmount: $remainingAmount');
+      debugPrint('remainingAmount > 0: ${remainingAmount > 0}');
 
       debugPrint('=== DEBUG: Cálculo de saldo ===');
       debugPrint('Saldo atual: R\$ ${currentBalance.toStringAsFixed(2)}');
@@ -1313,8 +1347,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           'Valor limitado (clamped): R\$ ${clampedBalance.toStringAsFixed(2)}');
       debugPrint('Valor restante: R\$ ${remainingAmount.toStringAsFixed(2)}');
 
-      // Agendar o serviço e obter o ID do agendamento
-      final appointmentId = await _proceedWithSchedulingAndGetId();
+      // Agendar o serviço e obter o ID do agendamento (pular redirecionamento automático)
+      final appointmentId =
+          await _proceedWithSchedulingAndGetId(skipPaymentRedirect: true);
 
       // Se ainda há valor para pagar, ir para tela de pagamento
       debugPrint('=== DEBUG: Verificando redirecionamento ===');
@@ -1322,6 +1357,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('AppointmentId não é null: ${appointmentId != null}');
 
       if (remainingAmount > 0 && appointmentId != null) {
+        // Se há valor restante, redirecionar para tela de pagamento
         debugPrint('=== DEBUG: Redirecionando para tela de pagamento ===');
         debugPrint('Valor a pagar: R\$ ${remainingAmount.toStringAsFixed(2)}');
         debugPrint(
@@ -1348,7 +1384,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           );
         }
       } else if (appointmentId != null) {
-        // Se não há valor restante, processar o pagamento completo com saldo
+        // Se não há valor restante (saldo cobre tudo), processar o pagamento completo com saldo
         debugPrint('=== DEBUG: Processando pagamento completo com saldo ===');
         debugPrint(
             'Valor usado do saldo: R\$ ${clampedBalance.toStringAsFixed(2)}');
@@ -1379,7 +1415,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('ID do agendamento: $appointmentId');
 
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       final currentBalance = (await FirebaseFirestore.instance
                   .collection('users')
@@ -1420,14 +1456,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         await _loadBookedTimeSlots();
       }
     } catch (e) {
-      throw Exception('Erro ao processar pagamento com saldo: $e');
+      throw ('Erro ao processar pagamento com saldo: $e');
     }
   }
 
-  Future<String?> _proceedWithSchedulingAndGetId() async {
+  Future<String?> _proceedWithSchedulingAndGetId(
+      {bool skipPaymentRedirect = false}) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       final timeParts = _selectedTime!.split(':');
       final dateTime = DateTime(
@@ -1533,8 +1570,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           debugPrint(
               '=== DEBUG: Serviço sem valor - mostrando diálogo de sucesso ===');
           _showSuccessDialog();
-        } else {
-          // Se há valor para pagar, redirecionar para tela de pagamento
+        } else if (!skipPaymentRedirect) {
+          // Se há valor para pagar e não deve pular redirecionamento, ir para tela de pagamento
           debugPrint(
               '=== DEBUG: Serviço com valor - redirecionando para pagamento ===');
           debugPrint('Valor total: R\$ ${totalAmount.toStringAsFixed(2)}');
@@ -1555,6 +1592,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               ),
             ),
           );
+        } else {
+          debugPrint('=== DEBUG: Pular redirecionamento para pagamento ===');
         }
       }
 
@@ -2154,61 +2193,73 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           );
                           final isAvailable =
                               _isBlockAvailable(slotTime, _bookedTimeSlots);
-                          if (!isAvailable) return const SizedBox.shrink();
+                          // Não esconder horários - mostrar todos, mas marcar os ocupados
                           return Tooltip(
-                            message: 'Disponível',
+                            message: isAvailable ? 'Disponível' : 'Ocupado',
                             child: InkWell(
-                              onTap: () async {
-                                // Verificar se o horário ainda está disponível
-                                final isAvailable =
-                                    await _isTimeSlotAvailable(slotTime);
-                                if (!isAvailable) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                            'Este horário não está mais disponível. Por favor, escolha outro horário.'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                  return;
-                                }
+                              onTap: isAvailable
+                                  ? () async {
+                                      // Verificar se o horário ainda está disponível
+                                      final isStillAvailable =
+                                          await _isTimeSlotAvailable(slotTime);
+                                      if (!isStillAvailable) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                  'Este horário não está mais disponível. Por favor, escolha outro horário.'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
 
-                                // Criar reserva temporária
-                                final tempBookingId =
-                                    await _createTemporaryBooking(slotTime);
-                                if (tempBookingId == null) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                            'Erro ao reservar horário. Tente novamente.'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                  return;
-                                }
+                                      // Criar reserva temporária
+                                      final tempBookingId =
+                                          await _createTemporaryBooking(
+                                              slotTime);
+                                      if (tempBookingId == null) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                  'Erro ao reservar horário. Tente novamente.'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                        return;
+                                      }
 
-                                // Remover reserva temporária anterior se existir
-                                if (_tempBookingId != null) {
-                                  await _removeTemporaryBooking(_tempBookingId);
-                                }
+                                      // Remover reserva temporária anterior se existir
+                                      if (_tempBookingId != null) {
+                                        await _removeTemporaryBooking(
+                                            _tempBookingId);
+                                      }
 
-                                setState(() {
-                                  _selectedTime = timeSlot;
-                                  _tempBookingId =
-                                      tempBookingId; // Adicionar variável para armazenar o ID da reserva
-                                });
-                              },
+                                      setState(() {
+                                        _selectedTime = timeSlot;
+                                        _tempBookingId =
+                                            tempBookingId; // Adicionar variável para armazenar o ID da reserva
+                                      });
+                                    }
+                                  : null,
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: isSelected ? _mainColor : Colors.white,
+                                  color: isSelected
+                                      ? _mainColor
+                                      : (isAvailable
+                                          ? Colors.white
+                                          : Colors.grey.shade300),
                                   border: Border.all(
                                     color: isSelected
                                         ? _mainColor
-                                        : Colors.grey.shade300,
+                                        : (isAvailable
+                                            ? Colors.grey.shade300
+                                            : Colors.red.shade300),
                                   ),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
@@ -2218,7 +2269,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     style: GoogleFonts.poppins(
                                       color: isSelected
                                           ? Colors.white
-                                          : Colors.black87,
+                                          : (isAvailable
+                                              ? Colors.black87
+                                              : Colors.grey.shade600),
                                       fontWeight: isSelected
                                           ? FontWeight.bold
                                           : FontWeight.normal,

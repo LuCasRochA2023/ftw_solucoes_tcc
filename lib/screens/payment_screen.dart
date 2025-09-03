@@ -97,7 +97,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
       debugPrint('=== DEBUG: Processando pagamento com saldo ===');
       await _processBalancePayment();
-      
+
       // Se o valor restante é 0, navegar para sucesso
       if (widget.amount <= 0) {
         if (mounted && !_isDisposed) {
@@ -113,7 +113,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
       // Se há valor restante, continuar para criar pagamento PIX
-      debugPrint('=== DEBUG: Há valor restante para pagar: R\$ ${widget.amount.toStringAsFixed(2)} ===');
+      debugPrint(
+          '=== DEBUG: Há valor restante para pagar: R\$ ${widget.amount.toStringAsFixed(2)} ===');
     }
 
     // Primeiro carregar o CPF, depois criar o pagamento
@@ -342,7 +343,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           _startStatusPolling();
           debugPrint('QR Code gerado com sucesso!');
         } else {
-          throw Exception('QR Code não foi gerado pelo backend');
+          throw ('QR Code não foi gerado pelo backend');
         }
       } else {
         final errorData = jsonDecode(response.body);
@@ -609,7 +610,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _processBalancePayment() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('Usuário não autenticado');
+      if (user == null) throw ('Usuário não autenticado');
 
       final currentBalance = (await FirebaseFirestore.instance
                   .collection('users')
@@ -641,8 +642,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
           .collection('appointments')
           .doc(widget.appointmentId)
           .update({'status': 'confirmed'});
+
+      // Salvar informações do pagamento para possível devolução futura
+      await _savePaymentInfo();
     } catch (e) {
-      throw Exception('Erro ao processar pagamento com saldo: $e');
+      throw ('Erro ao processar pagamento com saldo: $e');
     }
   }
 
