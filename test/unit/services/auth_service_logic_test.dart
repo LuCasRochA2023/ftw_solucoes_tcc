@@ -181,7 +181,7 @@ void main() {
         const senhaValida = 'Senha123';
 
         // Act
-        final temTamanhoMinimo = senhaValida.length >= 8;
+        const temTamanhoMinimo = senhaValida.length >= 8;
         final temMaiuscula = RegExp(r'[A-Z]').hasMatch(senhaValida);
         final temMinuscula = RegExp(r'[a-z]').hasMatch(senhaValida);
         final temNumero = RegExp(r'\d').hasMatch(senhaValida);
@@ -198,7 +198,7 @@ void main() {
         const senhaInvalida = 'Sen123';
 
         // Act
-        final temTamanhoMinimo = senhaInvalida.length >= 8;
+        const temTamanhoMinimo = senhaInvalida.length >= 8;
 
         // Assert
         expect(temTamanhoMinimo, isFalse);
@@ -242,7 +242,7 @@ void main() {
         const senhaValida = 'Senha123!@#';
 
         // Act
-        final temTamanhoMinimo = senhaValida.length >= 8;
+        const temTamanhoMinimo = senhaValida.length >= 8;
         final temMaiuscula = RegExp(r'[A-Z]').hasMatch(senhaValida);
         final temMinuscula = RegExp(r'[a-z]').hasMatch(senhaValida);
         final temNumero = RegExp(r'\d').hasMatch(senhaValida);
@@ -260,7 +260,7 @@ void main() {
         final regexCompleto = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)');
 
         // Act
-        final temTamanhoMinimo = senhaValida.length >= 8;
+        const temTamanhoMinimo = senhaValida.length >= 8;
         final temTodosRequisitos = regexCompleto.hasMatch(senhaValida);
 
         // Assert

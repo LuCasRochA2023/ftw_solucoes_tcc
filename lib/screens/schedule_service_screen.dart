@@ -193,20 +193,72 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint(
           '=== DEBUG: Gerando horários para data: ${_selectedDate.toString()} ===');
 
-      // Buscar horários disponíveis do Firebase
+      // Primeiro, vamos verificar se a coleção existe e tem dados
+      debugPrint(
+          '=== DEBUG: Verificando se a coleção disponibilidade_clientes existe ===');
+
+      // Buscar TODOS os documentos da coleção para debug
+      final allDocsSnapshot = await _firestore
+          .collection('disponibilidade_clientes')
+          .limit(10)
+          .get();
+
+      debugPrint(
+          '=== DEBUG: Total de documentos na coleção: ${allDocsSnapshot.docs.length} ===');
+
+      // Log de todos os documentos para debug
+      for (var doc in allDocsSnapshot.docs) {
+        debugPrint('=== DEBUG: Documento ${doc.id}: ${doc.data()} ===');
+      }
+
+      // Buscar horários disponíveis do Firebase - usar o campo correto 'isAvailable'
       final snapshot = await _firestore
           .collection('disponibilidade_clientes')
           .where('isAvailableForClients', isEqualTo: true)
           .get();
 
       debugPrint(
-          '=== DEBUG: Encontrados ${snapshot.docs.length} documentos na coleção disponibilidade_clientes ===');
+          '=== DEBUG: Busca por isAvailableForClients=true: ${snapshot.docs.length} documentos ===');
+
+      debugPrint(
+          '=== DEBUG: Encontrados ${snapshot.docs.length} documentos para análise na coleção disponibilidade_clientes ===');
+
+      // Log dos documentos encontrados
+      for (var doc in snapshot.docs) {
+        debugPrint(
+            '=== DEBUG: Documento para análise ${doc.id}: ${doc.data()} ===');
+      }
 
       final Set<String> availableSlots = {};
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        final date = data['date'] as String?;
-        final startTime = data['startTime'] as String?;
+
+        // Tentar diferentes estruturas de dados
+        String? date;
+        String? startTime;
+
+        debugPrint('=== DEBUG: Analisando documento ${doc.id} ===');
+        debugPrint('=== DEBUG: Campos disponíveis: ${data.keys.toList()} ===');
+
+        // Estrutura da coleção disponibilidades_clientes
+        if (data['data'] != null && data['horario'] != null) {
+          date = data['data'] as String?;
+          startTime = data['horario'] as String?;
+          debugPrint(
+              '=== DEBUG: Usando estrutura disponibilidades_clientes ===');
+        }
+        // Estrutura alternativa
+        else if (data['date'] != null && data['startTime'] != null) {
+          date = data['date'] as String?;
+          startTime = data['startTime'] as String?;
+          debugPrint('=== DEBUG: Usando estrutura alternativa ===');
+        }
+        // Tentar outros campos possíveis
+        else if (data['dia'] != null && data['hora'] != null) {
+          date = data['dia'] as String?;
+          startTime = data['hora'] as String?;
+          debugPrint('=== DEBUG: Usando estrutura dia/hora ===');
+        }
 
         debugPrint(
             '=== DEBUG: Documento - date: $date, startTime: $startTime ===');
@@ -222,7 +274,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           if (date == selectedDateStr) {
             availableSlots.add(startTime);
             debugPrint('=== DEBUG: Horário adicionado: $startTime ===');
+          } else {
+            debugPrint('=== DEBUG: Data não confere - ignorando horário ===');
           }
+        } else {
+          debugPrint(
+              '=== DEBUG: Campos de data/hora não encontrados - ignorando documento ===');
         }
       }
 
@@ -233,40 +290,35 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       _timeSlots.addAll(availableSlots.toList());
       _timeSlots.sort();
 
-      // Se não há horários disponíveis, usar fallback
+      // Se não há horários disponíveis, mostrar mensagem
       if (_timeSlots.isEmpty) {
         debugPrint(
-            '=== DEBUG: Nenhum horário disponível - usando fallback ===');
-        _generateFallbackTimeSlots();
+            '=== DEBUG: Nenhum horário habilitado pelo admin para esta data ===');
+
+        // Verificar se há horários disponíveis para outras datas
+        final allAvailableDocs = await _firestore
+            .collection('disponibilidade_clientes')
+            .where('isAvailableForClients', isEqualTo: true)
+            .get();
+
+        if (allAvailableDocs.docs.isNotEmpty) {
+          final availableDates = allAvailableDocs.docs
+              .map((doc) => doc.data()['date'] as String?)
+              .where((date) => date != null)
+              .toSet()
+              .toList();
+
+          debugPrint(
+              '=== DEBUG: Horários disponíveis para outras datas: $availableDates ===');
+        }
       } else {
-        debugPrint('=== DEBUG: Horários finais: $_timeSlots ===');
+        debugPrint(
+            '=== DEBUG: Horários finais habilitados pelo admin: $_timeSlots ===');
       }
     } catch (e) {
       debugPrint('=== DEBUG: Erro ao carregar horários: $e ===');
-      // Fallback: horários padrão se houver erro
-      _generateFallbackTimeSlots();
+      // Em caso de erro, não usar fallback - mostrar que não há horários
     }
-  }
-
-  void _generateFallbackTimeSlots() {
-    _timeSlots.clear();
-    debugPrint('=== DEBUG: Gerando horários de fallback ===');
-
-    // Horários de 8:00 às 18:00 com intervalos de 30 minutos
-    final startTime = DateTime(2024, 1, 1, 8, 0);
-    final endTime = DateTime(2024, 1, 1, 18, 0);
-    const step = Duration(minutes: 30);
-
-    DateTime currentSlot = startTime;
-    while (currentSlot.isBefore(endTime)) {
-      final timeStr = DateFormat('HH:mm').format(currentSlot);
-      _timeSlots.add(timeStr);
-      debugPrint('=== DEBUG: Horário de fallback adicionado: $timeStr ===');
-      currentSlot = currentSlot.add(step);
-    }
-
-    debugPrint(
-        '=== DEBUG: Total de horários de fallback: ${_timeSlots.length} ===');
   }
 
   // Função para verificar se o bloco está livre
@@ -2159,7 +2211,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Para esta data não há horários cadastrados no sistema.\nSelecione outra data ou entre em contato conosco.',
+                              'Para esta data não há horários habilitados pelo administrador.\nSelecione outra data ou entre em contato conosco.',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.poppins(
                                 fontSize: 14,
