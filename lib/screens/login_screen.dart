@@ -3,6 +3,7 @@ import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:ftw_solucoes/screens/register_screen.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
+import 'package:ftw_solucoes/utils/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -49,7 +50,11 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(
+          content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -98,8 +103,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Erro ao enviar email: ${e.toString()}'),
+          content: Text(ErrorHandler.getPasswordResetErrorMessage(e)),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {

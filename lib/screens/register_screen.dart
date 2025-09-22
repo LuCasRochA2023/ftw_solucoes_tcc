@@ -3,6 +3,7 @@ import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/utils/validation_utils.dart';
+import 'package:ftw_solucoes/utils/error_handler.dart';
 
 class RegisterScreen extends StatefulWidget {
   final AuthService authService;
@@ -52,7 +53,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(
+          content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isLoading = false);

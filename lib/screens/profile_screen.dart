@@ -13,6 +13,7 @@ import '../screens/login_screen.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import '../utils/error_handler.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:ftw_solucoes/utils/validation_utils.dart';
@@ -291,7 +292,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Erro ao processar imagem: ${e.toString()}'),
+                content: Text('Erro ao processar imagem. Tente novamente.'),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 3),
               ),
@@ -307,7 +308,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao selecionar imagem: ${e.toString()}'),
+            content: Text('Erro ao selecionar imagem. Tente novamente.'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
@@ -416,8 +417,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           address['neighborhood']!.isEmpty ||
           address['city']!.isEmpty ||
           address['state']!.isEmpty) {
-        throw (
-            'Por favor, preencha todos os campos obrigatórios do endereço');
+        throw ('Por favor, preencha todos os campos obrigatórios do endereço');
       }
 
       // Atualizar dados no Firestore
@@ -439,7 +439,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _showSuccessMessage('Perfil atualizado com sucesso!');
       });
     } catch (e) {
-      _showErrorMessage(e.toString());
+      _showErrorMessage(ErrorHandler.getFriendlyErrorMessage(e));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -887,8 +887,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString()),
+            content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }

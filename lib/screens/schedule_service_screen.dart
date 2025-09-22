@@ -31,7 +31,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
-  String? _tempBookingId; // ID da reserva temporária
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
   final TextEditingController _balanceAmountController =
@@ -85,10 +84,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   @override
   void dispose() {
-    // Limpar reserva temporária se existir
-    if (_tempBookingId != null) {
-      _removeTemporaryBooking(_tempBookingId);
-    }
     super.dispose();
   }
 
@@ -101,36 +96,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     await _loadBookedTimeSlots();
     await _loadUserCars();
 
-    // Limpar reservas temporárias expiradas
-    await _cleanupExpiredTemporaryBookings();
-
     if (mounted) {
       setState(() {}); // Atualiza a UI apenas uma vez após toda inicialização
-    }
-  }
-
-  // Função para limpar reservas temporárias expiradas
-  Future<void> _cleanupExpiredTemporaryBookings() async {
-    try {
-      debugPrint('=== DEBUG: Limpando reservas temporárias expiradas ===');
-
-      // Buscar todas as reservas temporárias e filtrar por expiração no código
-      final allTempBookings =
-          await _firestore.collection('temp_bookings').get();
-
-      final expiredBookings = allTempBookings.docs.where((doc) {
-        final expiresAt = doc.data()['expiresAt'] as Timestamp?;
-        return expiresAt != null && expiresAt.toDate().isBefore(DateTime.now());
-      }).toList();
-
-      for (var doc in expiredBookings) {
-        await doc.reference.delete();
-      }
-
-      debugPrint(
-          '=== DEBUG: ${expiredBookings.length} reservas expiradas removidas ===');
-    } catch (e) {
-      debugPrint('Erro ao limpar reservas expiradas: $e');
     }
   }
 
@@ -478,75 +445,60 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     }
   }
 
-  // Função para criar uma reserva temporária do horário
-  Future<String?> _createTemporaryBooking(DateTime selectedDateTime) async {
-    try {
-      debugPrint('=== DEBUG: Criando reserva temporária ===');
-      debugPrint('Data/Hora selecionada: $selectedDateTime');
-
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw ('Usuário não autenticado');
-
-      // Criar documento de reserva temporária
-      final tempBookingRef = await _firestore.collection('temp_bookings').add({
-        'userId': user.uid,
-        'dateTime': Timestamp.fromDate(selectedDateTime),
-        'date': DateFormat('yyyy-MM-dd').format(selectedDateTime),
-        'time': DateFormat('HH:mm').format(selectedDateTime),
-        'createdAt': FieldValue.serverTimestamp(),
-        'expiresAt': Timestamp.fromDate(DateTime.now()
-            .add(const Duration(minutes: 10))), // Expira em 10 minutos
-        'status': 'active'
-      });
-
-      debugPrint(
-          '=== DEBUG: Reserva temporária criada: ${tempBookingRef.id} ===');
-      return tempBookingRef.id;
-    } catch (e) {
-      debugPrint('Erro ao criar reserva temporária: $e');
-      return null;
-    }
-  }
-
-  // Função para verificar se o horário está disponível (incluindo reservas temporárias)
+  // Função para verificar se o horário está disponível (apenas agendamentos confirmados/pendentes)
   Future<bool> _isTimeSlotAvailable(DateTime selectedDateTime) async {
     try {
       debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
       debugPrint('Data/Hora: $selectedDateTime');
 
-      final dateStr = DateFormat('yyyy-MM-dd').format(selectedDateTime);
-      final timeStr = DateFormat('HH:mm').format(selectedDateTime);
+      // Buscar agendamentos no mesmo dia
+      final startOfDay = DateTime(
+        selectedDateTime.year,
+        selectedDateTime.month,
+        selectedDateTime.day,
+      );
+      final endOfDay = DateTime(
+        selectedDateTime.year,
+        selectedDateTime.month,
+        selectedDateTime.day,
+        23,
+        59,
+        59,
+      );
 
-      // Verificar agendamentos existentes
+      // Verificar agendamentos existentes usando dateTime (sem filtro de status para evitar índice composto)
       final appointmentsQuery = await _firestore
           .collection('appointments')
-          .where('date', isEqualTo: dateStr)
-          .where('time', isEqualTo: timeStr)
-          .where('status', whereIn: ['confirmed', 'pending']).get();
-
-      if (appointmentsQuery.docs.isNotEmpty) {
-        debugPrint(
-            '=== DEBUG: Horário já tem agendamento confirmado/pendente ===');
-        return false;
-      }
-
-      // Verificar reservas temporárias ativas (simplificado para evitar erro de índice)
-      final tempBookingsQuery = await _firestore
-          .collection('temp_bookings')
-          .where('date', isEqualTo: dateStr)
-          .where('time', isEqualTo: timeStr)
-          .where('status', isEqualTo: 'active')
+          .where('dateTime', isGreaterThanOrEqualTo: startOfDay)
+          .where('dateTime', isLessThan: endOfDay)
           .get();
 
-      // Filtrar por expiração no código para evitar índice composto
-      final activeTempBookings = tempBookingsQuery.docs.where((doc) {
-        final expiresAt = doc.data()['expiresAt'] as Timestamp?;
-        return expiresAt != null && expiresAt.toDate().isAfter(DateTime.now());
-      }).toList();
+      debugPrint(
+          '=== DEBUG: Encontrados ${appointmentsQuery.docs.length} agendamentos no dia ===');
 
-      if (activeTempBookings.isNotEmpty) {
-        debugPrint('=== DEBUG: Horário tem reserva temporária ativa ===');
-        return false;
+      // Verificar se há conflito de horário
+      for (var doc in appointmentsQuery.docs) {
+        final data = doc.data();
+        final status = data['status'] as String?;
+
+        // Filtrar apenas agendamentos confirmados e pendentes
+        if (status != 'confirmed' && status != 'pending') {
+          continue;
+        }
+
+        final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
+
+        // Verificar se é o mesmo horário (com tolerância de 1 minuto)
+        final timeDiff = selectedDateTime.difference(appointmentDateTime).abs();
+        if (timeDiff.inMinutes < 1) {
+          debugPrint(
+              '=== DEBUG: Horário já tem agendamento confirmado/pendente ===');
+          debugPrint('Agendamento conflitante: ${doc.id}');
+          debugPrint('Status: $status');
+          debugPrint(
+              'Horário do agendamento: ${DateFormat('HH:mm').format(appointmentDateTime)}');
+          return false;
+        }
       }
 
       debugPrint('=== DEBUG: Horário está disponível ===');
@@ -554,35 +506,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     } catch (e) {
       debugPrint('Erro ao verificar disponibilidade: $e');
       return false;
-    }
-  }
-
-  // Função para remover reserva temporária
-  Future<void> _removeTemporaryBooking(String? tempBookingId) async {
-    if (tempBookingId == null) return;
-
-    try {
-      debugPrint('=== DEBUG: Removendo reserva temporária: $tempBookingId ===');
-      await _firestore.collection('temp_bookings').doc(tempBookingId).delete();
-      debugPrint('=== DEBUG: Reserva temporária removida ===');
-    } catch (e) {
-      debugPrint('Erro ao remover reserva temporária: $e');
-    }
-  }
-
-  // Função para confirmar reserva temporária (converter em agendamento)
-  Future<void> _confirmTemporaryBooking(
-      String tempBookingId, String appointmentId) async {
-    try {
-      debugPrint('=== DEBUG: Confirmando reserva temporária ===');
-      await _firestore.collection('temp_bookings').doc(tempBookingId).update({
-        'appointmentId': appointmentId,
-        'status': 'confirmed',
-        'confirmedAt': FieldValue.serverTimestamp()
-      });
-      debugPrint('=== DEBUG: Reserva temporária confirmada ===');
-    } catch (e) {
-      debugPrint('Erro ao confirmar reserva temporária: $e');
     }
   }
 
@@ -1606,12 +1529,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('=== DEBUG: Agendamento criado com sucesso ===');
       debugPrint('ID do agendamento: ${docRef.id}');
 
-      // Confirmar reserva temporária se existir
-      if (_tempBookingId != null) {
-        await _confirmTemporaryBooking(_tempBookingId!, docRef.id);
-        _tempBookingId = null; // Limpar a variável
-      }
-
       if (mounted) {
         // Recarregar horários ocupados após criar o agendamento
         await _loadBookedTimeSlots();
@@ -2268,34 +2185,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                         return;
                                       }
 
-                                      // Criar reserva temporária
-                                      final tempBookingId =
-                                          await _createTemporaryBooking(
-                                              slotTime);
-                                      if (tempBookingId == null) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Erro ao reservar horário. Tente novamente.'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                        return;
-                                      }
-
-                                      // Remover reserva temporária anterior se existir
-                                      if (_tempBookingId != null) {
-                                        await _removeTemporaryBooking(
-                                            _tempBookingId);
-                                      }
-
                                       setState(() {
                                         _selectedTime = timeSlot;
-                                        _tempBookingId =
-                                            tempBookingId; // Adicionar variável para armazenar o ID da reserva
                                       });
                                     }
                                   : null,

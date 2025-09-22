@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:ftw_solucoes/utils/error_handler.dart';
 
 class ServicesScreen extends StatefulWidget {
   final AuthService authService;
@@ -67,7 +68,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
       debugPrint('=== DEBUG: Erro ao carregar serviços: $e ===');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(
+          content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
       setState(() => _isLoading = false);
     }
