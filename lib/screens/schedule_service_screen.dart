@@ -157,135 +157,122 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<void> _generateTimeSlots() async {
     _timeSlots.clear();
     try {
-      debugPrint(
-          '=== DEBUG: Gerando horários para data: ${_selectedDate.toString()} ===');
+      debugPrint('Gerando horários para data: ${_selectedDate.toString()}');
 
-      // Primeiro, vamos verificar se a coleção existe e tem dados
-      debugPrint(
-          '=== DEBUG: Verificando se a coleção disponibilidade_clientes existe ===');
-
-      // Buscar TODOS os documentos da coleção para debug
-      final allDocsSnapshot = await _firestore
-          .collection('disponibilidade_clientes')
-          .limit(10)
-          .get();
-
-      debugPrint(
-          '=== DEBUG: Total de documentos na coleção: ${allDocsSnapshot.docs.length} ===');
-
-      // Log de todos os documentos para debug
-      for (var doc in allDocsSnapshot.docs) {
-        debugPrint('=== DEBUG: Documento ${doc.id}: ${doc.data()} ===');
-      }
-
-      // Buscar horários disponíveis do Firebase - usar o campo correto 'isAvailable'
+      // Buscar horários disponíveis do Firestore
       final snapshot = await _firestore
-          .collection('disponibilidade_clientes')
+          .collection('horarios_disponiveis')
           .where('isAvailableForClients', isEqualTo: true)
           .get();
 
-      debugPrint(
-          '=== DEBUG: Busca por isAvailableForClients=true: ${snapshot.docs.length} documentos ===');
-
-      debugPrint(
-          '=== DEBUG: Encontrados ${snapshot.docs.length} documentos para análise na coleção disponibilidade_clientes ===');
-
-      // Log dos documentos encontrados
-      for (var doc in snapshot.docs) {
-        debugPrint(
-            '=== DEBUG: Documento para análise ${doc.id}: ${doc.data()} ===');
+      if (snapshot.docs.isEmpty) {
+        debugPrint('Nenhum horário disponível encontrado na coleção');
+        return;
       }
+
+      debugPrint('Encontrados ${snapshot.docs.length} documentos disponíveis');
+
+      // Formato da data selecionada: YYYY-MM-DD
+      final selectedDateStr =
+          '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
       final Set<String> availableSlots = {};
+      
       for (var doc in snapshot.docs) {
         final data = doc.data();
-
-        // Tentar diferentes estruturas de dados
-        String? date;
-        String? startTime;
-
-        debugPrint('=== DEBUG: Analisando documento ${doc.id} ===');
-        debugPrint('=== DEBUG: Campos disponíveis: ${data.keys.toList()} ===');
-
-        // Estrutura da coleção disponibilidades_clientes
-        if (data['data'] != null && data['horario'] != null) {
-          date = data['data'] as String?;
-          startTime = data['horario'] as String?;
-          debugPrint(
-              '=== DEBUG: Usando estrutura disponibilidades_clientes ===');
-        }
-        // Estrutura alternativa
-        else if (data['date'] != null && data['startTime'] != null) {
-          date = data['date'] as String?;
-          startTime = data['startTime'] as String?;
-          debugPrint('=== DEBUG: Usando estrutura alternativa ===');
-        }
-        // Tentar outros campos possíveis
-        else if (data['dia'] != null && data['hora'] != null) {
-          date = data['dia'] as String?;
-          startTime = data['hora'] as String?;
-          debugPrint('=== DEBUG: Usando estrutura dia/hora ===');
+        
+        // Extrair data e horário do documento
+        final dateTime = _extractDateTime(data);
+        if (dateTime == null) {
+          debugPrint('Documento ${doc.id} não possui data/hora válida');
+          continue;
         }
 
-        debugPrint(
-            '=== DEBUG: Documento - date: $date, startTime: $startTime ===');
-
-        if (date != null && startTime != null) {
-          // Verificar se é para a data selecionada
-          final selectedDateStr =
-              '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
-
-          debugPrint(
-              '=== DEBUG: Comparando datas - Documento: $date, Selecionada: $selectedDateStr ===');
-
-          if (date == selectedDateStr) {
-            availableSlots.add(startTime);
-            debugPrint('=== DEBUG: Horário adicionado: $startTime ===');
-          } else {
-            debugPrint('=== DEBUG: Data não confere - ignorando horário ===');
-          }
-        } else {
-          debugPrint(
-              '=== DEBUG: Campos de data/hora não encontrados - ignorando documento ===');
+        // Normalizar data para formato YYYY-MM-DD
+        final normalizedDate = _normalizeDate(dateTime['date']!);
+        
+        // Verificar se é para a data selecionada
+        if (normalizedDate == selectedDateStr) {
+          availableSlots.add(dateTime['time']!);
+          debugPrint('Horário adicionado: ${dateTime['time']} para data $normalizedDate');
         }
       }
 
-      debugPrint(
-          '=== DEBUG: Total de horários encontrados: ${availableSlots.length} ===');
-
-      // Adicionar horários disponíveis
+      // Adicionar e ordenar horários
       _timeSlots.addAll(availableSlots.toList());
       _timeSlots.sort();
 
-      // Se não há horários disponíveis, mostrar mensagem
-      if (_timeSlots.isEmpty) {
-        debugPrint(
-            '=== DEBUG: Nenhum horário habilitado pelo admin para esta data ===');
-
-        // Verificar se há horários disponíveis para outras datas
-        final allAvailableDocs = await _firestore
-            .collection('disponibilidade_clientes')
-            .where('isAvailableForClients', isEqualTo: true)
-            .get();
-
-        if (allAvailableDocs.docs.isNotEmpty) {
-          final availableDates = allAvailableDocs.docs
-              .map((doc) => doc.data()['date'] as String?)
-              .where((date) => date != null)
-              .toSet()
-              .toList();
-
-          debugPrint(
-              '=== DEBUG: Horários disponíveis para outras datas: $availableDates ===');
-        }
-      } else {
-        debugPrint(
-            '=== DEBUG: Horários finais habilitados pelo admin: $_timeSlots ===');
+      debugPrint('Total de horários disponíveis para ${_dateFormat?.format(_selectedDate)}: ${_timeSlots.length}');
+      if (_timeSlots.isNotEmpty) {
+        debugPrint('Horários: $_timeSlots');
       }
     } catch (e) {
-      debugPrint('=== DEBUG: Erro ao carregar horários: $e ===');
-      // Em caso de erro, não usar fallback - mostrar que não há horários
+      debugPrint('Erro ao carregar horários do Firestore: $e');
     }
+  }
+
+  /// Extrai data e hora de diferentes estruturas de documento
+  Map<String, String>? _extractDateTime(Map<String, dynamic> data) {
+    String? date;
+    String? time;
+
+    // Estrutura 1: date + startTime
+    if (data['date'] != null && data['startTime'] != null) {
+      date = data['date'] as String;
+      time = data['startTime'] as String;
+    }
+    // Estrutura 2: data + horario (português)
+    else if (data['data'] != null && data['horario'] != null) {
+      date = data['data'] as String;
+      time = data['horario'] as String;
+    }
+    // Estrutura 3: date + time
+    else if (data['date'] != null && data['time'] != null) {
+      date = data['date'] as String;
+      time = data['time'] as String;
+    }
+    // Estrutura 4: dia + hora
+    else if (data['dia'] != null && data['hora'] != null) {
+      date = data['dia'] as String;
+      time = data['hora'] as String;
+    }
+    // Estrutura 5: timestamp ou dateTime
+    else if (data['timestamp'] != null || data['dateTime'] != null) {
+      try {
+        final timestamp = (data['timestamp'] ?? data['dateTime']) as Timestamp;
+        final dateTime = timestamp.toDate();
+        date = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+        time = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+      } catch (e) {
+        debugPrint('Erro ao processar timestamp: $e');
+        return null;
+      }
+    }
+
+    if (date != null && time != null) {
+      return {'date': date, 'time': time};
+    }
+    return null;
+  }
+
+  /// Normaliza diferentes formatos de data para YYYY-MM-DD
+  String _normalizeDate(String date) {
+    String normalized = date.trim();
+    
+    // Formato DD/MM/YYYY -> YYYY-MM-DD
+    if (normalized.contains('/')) {
+      final parts = normalized.split('/');
+      if (parts.length == 3) {
+        return '${parts[2]}-${parts[1].padLeft(2, '0')}-${parts[0].padLeft(2, '0')}';
+      }
+    }
+    // Formato YYYY-M-D -> YYYY-MM-DD (adicionar zeros)
+    else if (normalized.split('-').length == 3) {
+      final parts = normalized.split('-');
+      return '${parts[0]}-${parts[1].padLeft(2, '0')}-${parts[2].padLeft(2, '0')}';
+    }
+    
+    return normalized;
   }
 
   // Função para verificar se o bloco está livre

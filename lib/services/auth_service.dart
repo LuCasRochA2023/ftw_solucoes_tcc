@@ -226,6 +226,7 @@ class AuthService {
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
+    _auth.setLanguageCode('pt');
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } on FirebaseAuthException catch (e) {

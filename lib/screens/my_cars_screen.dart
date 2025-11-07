@@ -171,7 +171,7 @@ class _MyCarsScreenState extends State<MyCarsScreen> {
                           ListTile(
                             contentPadding: const EdgeInsets.all(16),
                             title: Text(
-                              car['name'],
+                              '${car['name']} ${car['model']}',
                               style: GoogleFonts.poppins(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 18,
@@ -181,10 +181,6 @@ class _MyCarsScreenState extends State<MyCarsScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Modelo: ${car['model']}',
-                                  style: GoogleFonts.poppins(fontSize: 14),
-                                ),
                                 Text(
                                   'Placa: ${car['plate']}',
                                   style: GoogleFonts.poppins(fontSize: 14),

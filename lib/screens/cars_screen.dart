@@ -49,9 +49,11 @@ class _CarsScreenState extends State<CarsScreen> {
         setState(() {
           _imageFile = File(pickedFile.path);
         });
+        debugPrint('Imagem selecionada: ${pickedFile.path}');
       }
     } catch (e) {
-      _showErrorMessage('Erro ao selecionar imagem');
+      debugPrint('Erro ao selecionar imagem: $e');
+      _showErrorMessage('Erro ao selecionar imagem: $e');
     }
   }
 
@@ -83,7 +85,8 @@ class _CarsScreenState extends State<CarsScreen> {
       await storageRef.putFile(_imageFile!, metadata);
       return await storageRef.getDownloadURL();
     } catch (e) {
-      _showErrorMessage('Erro ao fazer upload da imagem');
+      debugPrint('Erro ao fazer upload da imagem: $e');
+      _showErrorMessage('Erro ao fazer upload da imagem: $e');
       return null;
     }
   }
@@ -94,22 +97,41 @@ class _CarsScreenState extends State<CarsScreen> {
     setState(() => _isLoading = true);
 
     try {
+      debugPrint('=== Iniciando salvamento do carro ===');
+      
       final user = _auth.currentUser;
-      if (user == null) throw ('Usuário não autenticado');
+      if (user == null) {
+        debugPrint('ERRO: Usuário não autenticado');
+        throw ('Usuário não autenticado');
+      }
+
+      debugPrint('Usuário autenticado: ${user.uid}');
+      debugPrint('Nome: ${_nameController.text}');
+      debugPrint('Modelo: ${_modelController.text}');
+      debugPrint('Placa: ${_plateController.text}');
+      debugPrint('Cor: ${_colorController.text}');
 
       String? photoUrl;
       if (_imageFile != null) {
+        debugPrint('Upload de imagem iniciado...');
         photoUrl = await _uploadImage();
+        if (photoUrl != null) {
+          debugPrint('Upload concluído: $photoUrl');
+        } else {
+          debugPrint('Upload falhou - continuando sem foto');
+        }
       }
 
       final carData = {
-        'name': _nameController.text,
-        'model': _modelController.text,
-        'plate': _plateController.text.toUpperCase(),
-        'color': _colorController.text,
+        'name': _nameController.text.trim(),
+        'model': _modelController.text.trim(),
+        'plate': _plateController.text.trim().toUpperCase(),
+        'color': _colorController.text.trim(),
         if (photoUrl != null) 'photoUrl': photoUrl,
         'createdAt': FieldValue.serverTimestamp(),
       };
+
+      debugPrint('Salvando no Firestore: $carData');
 
       await _firestore
           .collection('users')
@@ -117,15 +139,28 @@ class _CarsScreenState extends State<CarsScreen> {
           .collection('cars')
           .add(carData);
 
+      debugPrint('Carro salvo com sucesso!');
+      
+      if (!mounted) return;
+      
       _showSuccessMessage('Carro adicionado com sucesso!');
       await Future.delayed(const Duration(milliseconds: 500));
+      
       if (mounted) {
         Navigator.pop(context, true);
       }
-    } catch (e) {
-      _showErrorMessage('Erro ao salvar carro');
+    } catch (e, stackTrace) {
+      debugPrint('=== ERRO ao salvar carro ===');
+      debugPrint('Erro: $e');
+      debugPrint('StackTrace: $stackTrace');
+      
+      if (!mounted) return;
+      
+      _showErrorMessage('Erro ao salvar carro: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -249,8 +284,8 @@ class _CarsScreenState extends State<CarsScreen> {
               const SizedBox(height: 24),
               _buildTextField(
                 controller: _nameController,
-                label: 'Nome do Carro',
-                hint: 'Ex: Meu Carro',
+                label: 'Marca',
+                hint: 'Ex: Volkswagen, Fiat, Chevrolet',
               ),
               _buildTextField(
                 controller: _modelController,
