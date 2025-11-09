@@ -585,6 +585,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
           'Meu Perfil',
@@ -610,82 +611,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: _buildProfileImage(),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Informações Pessoais',
-                      style: GoogleFonts.poppins(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+          : Column(
+              children: [
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: _buildProfileImage(),
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'Informações Pessoais',
+                            style: GoogleFonts.poppins(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _nameController,
+                            label: 'Nome Completo',
+                            keyboardType: TextInputType.name,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Por favor, informe seu nome completo';
+                              }
+                              if (!_isValidName(value)) {
+                                return 'Nome deve ter pelo menos 2 palavras e apenas letras';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            controller: _cpfController,
+                            label: 'CPF',
+                            formatter: _cpfFormatter,
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Por favor, informe seu CPF';
+                              }
+                              if (!_isValidCpf(value)) {
+                                return 'CPF inválido';
+                              }
+                              return null;
+                            },
+                          ),
+                          _buildTextField(
+                            controller: _phoneController,
+                            label: 'Telefone',
+                            formatter: _phoneFormatter,
+                            keyboardType: TextInputType.phone,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Por favor, informe seu telefone';
+                              }
+                              if (!_isValidPhone(value)) {
+                                return 'Telefone inválido';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                          Text(
+                            'Endereço',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildAddressFields(),
+                          const SizedBox(height: 16),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _nameController,
-                      label: 'Nome Completo',
-                      keyboardType: TextInputType.name,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor, informe seu nome completo';
-                        }
-                        if (!_isValidName(value)) {
-                          return 'Nome deve ter pelo menos 2 palavras e apenas letras';
-                        }
-                        return null;
-                      },
+                  ),
+                ),
+                SafeArea(
+                  child: Container(
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 16,
+                      top: 16,
+                      bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
                     ),
-                    _buildTextField(
-                      controller: _cpfController,
-                      label: 'CPF',
-                      formatter: _cpfFormatter,
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor, informe seu CPF';
-                        }
-                        if (!_isValidCpf(value)) {
-                          return 'CPF inválido';
-                        }
-                        return null;
-                      },
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, -5),
+                        ),
+                      ],
                     ),
-                    _buildTextField(
-                      controller: _phoneController,
-                      label: 'Telefone',
-                      formatter: _phoneFormatter,
-                      keyboardType: TextInputType.phone,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Por favor, informe seu telefone';
-                        }
-                        if (!_isValidPhone(value)) {
-                          return 'Telefone inválido';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Endereço',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _buildAddressFields(),
-                    const SizedBox(height: 32),
-                    SizedBox(
+                    child: SizedBox(
                       width: double.infinity,
                       height: 56,
                       child: ElevatedButton(
@@ -709,9 +736,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
     );
   }

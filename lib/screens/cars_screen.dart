@@ -228,6 +228,7 @@ class _CarsScreenState extends State<CarsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
           'Adicionar Carro',
@@ -237,7 +238,12 @@ class _CarsScreenState extends State<CarsScreen> {
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: EdgeInsets.only(
+          left: 24.0,
+          right: 24.0,
+          top: 24.0,
+          bottom: 24.0 + MediaQuery.of(context).viewInsets.bottom,
+        ),
         child: Form(
           key: _formKey,
           child: Column(

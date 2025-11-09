@@ -742,6 +742,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
     ];
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -906,58 +907,65 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
               },
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.arrow_forward),
-                label: Text('Avançar para Agendamento',
-                    style: GoogleFonts.poppins()),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      _selectedIndexes.isNotEmpty ? Colors.blue : Colors.grey,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: GoogleFonts.poppins(fontWeight: FontWeight.bold),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
+          SafeArea(
+            child: Container(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text('Avançar para Agendamento',
+                      style: GoogleFonts.poppins()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor:
+                        _selectedIndexes.isNotEmpty ? Colors.blue : Colors.grey,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero,
+                    ),
                   ),
-                ),
-                onPressed: _selectedIndexes.isEmpty
-                    ? null
-                    : () {
-                        final selectedServices =
-                            _selectedIndexes.map((i) => services[i]).toList();
+                  onPressed: _selectedIndexes.isEmpty
+                      ? null
+                      : () {
+                          final selectedServices =
+                              _selectedIndexes.map((i) => services[i]).toList();
 
-                        // Verificar se há mais de um serviço de lavagem
-                        final lavagemServices = selectedServices
-                            .where((service) =>
-                                _isLavagemService(service['title']))
-                            .toList();
+                          // Verificar se há mais de um serviço de lavagem
+                          final lavagemServices = selectedServices
+                              .where((service) =>
+                                  _isLavagemService(service['title']))
+                              .toList();
 
-                        if (lavagemServices.length > 1) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Apenas um tipo de lavagem é permitido por agendamento. '
-                                  'Remova um dos serviços de lavagem antes de continuar.'),
-                              backgroundColor: Colors.red,
+                          if (lavagemServices.length > 1) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Apenas um tipo de lavagem é permitido por agendamento. '
+                                    'Remova um dos serviços de lavagem antes de continuar.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ScheduleServiceScreen(
+                                services: selectedServices,
+                                authService: widget.authService,
+                              ),
                             ),
                           );
-                          return;
-                        }
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ScheduleServiceScreen(
-                              services: selectedServices,
-                              authService: widget.authService,
-                            ),
-                          ),
-                        );
-                      },
+                        },
+                ),
               ),
             ),
           ),

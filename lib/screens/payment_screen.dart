@@ -817,6 +817,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('Pagamento'),
         leading: IconButton(
@@ -1024,9 +1025,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     debugPrint(
         '=== DEBUG: _buildPixWidget chamado - _isProcessing: $_isProcessing ===');
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
@@ -1339,16 +1346,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
         ],
+        ),
       ),
     );
   }
 
   Widget _buildCreditCardWidget() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
@@ -1704,7 +1716,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ),
             ],
-          ),
         ),
       ),
     );
