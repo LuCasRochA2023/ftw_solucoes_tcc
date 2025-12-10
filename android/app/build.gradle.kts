@@ -15,8 +15,27 @@ if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
+fun getSigningProperty(key: String): String? {
+    val fromFile = keystoreProperties[key] as String?
+    if (!fromFile.isNullOrBlank()) return fromFile
+    val fromEnv = System.getenv(key.uppercase())
+    return if (fromEnv.isNullOrBlank()) null else fromEnv
+}
+
+val releaseKeyAlias = getSigningProperty("keyAlias")
+val releaseKeyPassword = getSigningProperty("keyPassword")
+val releaseStorePassword = getSigningProperty("storePassword")
+val releaseStoreFilePath = getSigningProperty("storeFile")
+val releaseStoreFile = releaseStoreFilePath?.let { rootProject.file(it) }
+val isReleaseSigningConfigured = listOf(
+    releaseKeyAlias,
+    releaseKeyPassword,
+    releaseStorePassword,
+    releaseStoreFilePath
+).all { !it.isNullOrBlank() }
+
 android {
-    namespace = "com.ftwsolucoes.ftw_solucoes"
+    namespace = "com.ftw.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -32,7 +51,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.ftwsolucoes.ftw_solucoes"
+        applicationId = "com.ftw.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -42,17 +61,23 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = keystoreProperties["storeFile"]?.let { rootProject.file(it as String) }
-            storePassword = keystoreProperties["storePassword"] as String
+        if (isReleaseSigningConfigured && releaseStoreFile != null) {
+            create("release") {
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword!!
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (isReleaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                println("⚠️  Release signing config not provided. Using debug signing config for release build.")
+            }
         }
     }
 }
