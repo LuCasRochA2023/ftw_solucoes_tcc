@@ -36,10 +36,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   final TextEditingController _balanceAmountController =
       TextEditingController();
 
-  // Função para obter a próxima data disponível (não domingo)
+  // Função para obter a próxima data disponível (não domingo e não feriado)
   static DateTime _getNextAvailableDate(DateTime date) {
-    DateTime currentDate = date;
-    while (currentDate.weekday == DateTime.sunday) {
+    DateTime currentDate = DateTime(date.year, date.month, date.day);
+    while (_isHolidayOrSunday(currentDate)) {
       currentDate = currentDate.add(const Duration(days: 1));
     }
     return currentDate;
@@ -47,6 +47,94 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Variável para opcional de cera (apenas uma seleção)
   String? _selectedCera;
+
+  static const List<String> _weekdayDefaultSlots = [
+    '08:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '13:00',
+    '14:00',
+    '15:00',
+    '16:00',
+  ];
+
+  static const List<String> _saturdayDefaultSlots = [
+    '08:00',
+    '09:00',
+    '10:00',
+    '11:00',
+    '13:00',
+    '14:00',
+  ];
+
+  static bool _isHolidayOrSunday(DateTime date) {
+    return date.weekday == DateTime.sunday || _isBrazilHoliday(date);
+  }
+
+  static bool _isBrazilHoliday(DateTime date) {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final year = normalizedDate.year;
+
+    final Set<DateTime> fixedHolidays = {
+      DateTime(year, 1, 1), // Confraternização Universal
+      DateTime(year, 4, 21), // Tiradentes
+      DateTime(year, 5, 1), // Dia do Trabalho
+      DateTime(year, 9, 7), // Independência do Brasil
+      DateTime(year, 10, 12), // Nossa Senhora Aparecida
+      DateTime(year, 11, 2), // Finados
+      DateTime(year, 11, 15), // Proclamação da República
+      DateTime(year, 12, 25), // Natal
+    };
+
+    final easterSunday = _calculateEasterSunday(year);
+    final Set<DateTime> movableHolidays = {
+      easterSunday
+          .subtract(const Duration(days: 48)), // Segunda-feira de Carnaval
+      easterSunday
+          .subtract(const Duration(days: 47)), // Terça-feira de Carnaval
+      easterSunday.subtract(const Duration(days: 2)), // Sexta-feira Santa
+      easterSunday, // Domingo de Páscoa
+      easterSunday.add(const Duration(days: 60)), // Corpus Christi
+    };
+
+    return fixedHolidays.contains(normalizedDate) ||
+        movableHolidays.contains(normalizedDate);
+  }
+
+  static DateTime _calculateEasterSunday(int year) {
+    // Algoritmo de Gauss para calcular a data da Páscoa
+    final a = year % 19;
+    final b = year ~/ 100;
+    final c = year % 100;
+    final d = b ~/ 4;
+    final e = b % 4;
+    final f = (b + 8) ~/ 25;
+    final g = (b - f + 1) ~/ 3;
+    final h = (19 * a + b - d - g + 15) % 30;
+    final i = c ~/ 4;
+    final k = c % 4;
+    final l = (32 + 2 * e + 2 * i - h - k) % 7;
+    final m = (a + 11 * h + 22 * l) ~/ 451;
+    final month = (h + l - 7 * m + 114) ~/ 31;
+    final day = ((h + l - 7 * m + 114) % 31) + 1;
+    return DateTime(year, month, day);
+  }
+
+  static List<String> _getDefaultSlotsForDate(DateTime date) {
+    switch (date.weekday) {
+      case DateTime.monday:
+      case DateTime.tuesday:
+      case DateTime.wednesday:
+      case DateTime.thursday:
+      case DateTime.friday:
+        return _weekdayDefaultSlots;
+      case DateTime.saturday:
+        return _saturdayDefaultSlots;
+      default:
+        return const [];
+    }
+  }
 
   final List<String> _timeSlots = [];
   DateFormat? _dateFormat;
@@ -156,58 +244,88 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   Future<void> _generateTimeSlots() async {
     _timeSlots.clear();
-    try {
-      debugPrint('Gerando horários para data: ${_selectedDate.toString()}');
 
-      // Buscar horários disponíveis do Firestore
+    final bool isSunday = _selectedDate.weekday == DateTime.sunday;
+    final bool isHoliday = _isBrazilHoliday(_selectedDate);
+
+    if (isSunday || isHoliday) {
+      debugPrint(
+          'Nenhum horário disponível: ${_selectedDate.toIso8601String()} é domingo/feriado.');
+      return;
+    }
+
+    final List<String> defaultSlots = _getDefaultSlotsForDate(_selectedDate);
+    if (defaultSlots.isEmpty) {
+      debugPrint(
+          'Nenhum horário padrão definido para ${_selectedDate.weekday}.');
+      return;
+    }
+
+    final Set<String> allowedSlots = defaultSlots.toSet();
+    Set<String> slotsToUse = <String>{};
+
+    try {
+      debugPrint(
+          'Gerando horários para data: ${_selectedDate.toIso8601String()}');
+
       final snapshot = await _firestore
           .collection('horarios_disponiveis')
           .where('isAvailableForClients', isEqualTo: true)
           .get();
 
       if (snapshot.docs.isEmpty) {
-        debugPrint('Nenhum horário disponível encontrado na coleção');
-        return;
-      }
+        debugPrint('Nenhum horário configurado no Firestore. Usando padrão.');
+        slotsToUse = Set<String>.from(allowedSlots);
+      } else {
+        debugPrint(
+            'Encontrados ${snapshot.docs.length} documentos disponíveis');
 
-      debugPrint('Encontrados ${snapshot.docs.length} documentos disponíveis');
+        final selectedDateStr =
+            '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
-      // Formato da data selecionada: YYYY-MM-DD
-      final selectedDateStr =
-          '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
 
-      final Set<String> availableSlots = {};
-      
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        
-        // Extrair data e horário do documento
-        final dateTime = _extractDateTime(data);
-        if (dateTime == null) {
-          debugPrint('Documento ${doc.id} não possui data/hora válida');
-          continue;
+          final dateTime = _extractDateTime(data);
+          if (dateTime == null) {
+            debugPrint('Documento ${doc.id} não possui data/hora válida');
+            continue;
+          }
+
+          final normalizedDate = _normalizeDate(dateTime['date']!);
+          if (normalizedDate == selectedDateStr) {
+            final time = dateTime['time']!;
+            if (allowedSlots.contains(time)) {
+              slotsToUse.add(time);
+              debugPrint('Horário adicionado: $time para data $normalizedDate');
+            } else {
+              debugPrint(
+                  'Horário ignorado por não estar na lista padrão: $time');
+            }
+          }
         }
 
-        // Normalizar data para formato YYYY-MM-DD
-        final normalizedDate = _normalizeDate(dateTime['date']!);
-        
-        // Verificar se é para a data selecionada
-        if (normalizedDate == selectedDateStr) {
-          availableSlots.add(dateTime['time']!);
-          debugPrint('Horário adicionado: ${dateTime['time']} para data $normalizedDate');
+        if (slotsToUse.isEmpty) {
+          debugPrint(
+              'Nenhum horário válido encontrado para a data. Usando padrão.');
+          slotsToUse = Set<String>.from(allowedSlots);
         }
-      }
-
-      // Adicionar e ordenar horários
-      _timeSlots.addAll(availableSlots.toList());
-      _timeSlots.sort();
-
-      debugPrint('Total de horários disponíveis para ${_dateFormat?.format(_selectedDate)}: ${_timeSlots.length}');
-      if (_timeSlots.isNotEmpty) {
-        debugPrint('Horários: $_timeSlots');
       }
     } catch (e) {
       debugPrint('Erro ao carregar horários do Firestore: $e');
+      slotsToUse = Set<String>.from(allowedSlots);
+    }
+
+    if (slotsToUse.isEmpty) {
+      slotsToUse = Set<String>.from(allowedSlots);
+    }
+
+    _timeSlots.addAll(slotsToUse.toList()..sort());
+
+    debugPrint(
+        'Total de horários disponíveis para ${_dateFormat?.format(_selectedDate)}: ${_timeSlots.length}');
+    if (_timeSlots.isNotEmpty) {
+      debugPrint('Horários: $_timeSlots');
     }
   }
 
@@ -241,8 +359,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       try {
         final timestamp = (data['timestamp'] ?? data['dateTime']) as Timestamp;
         final dateTime = timestamp.toDate();
-        date = '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
-        time = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+        date =
+            '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+        time =
+            '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
       } catch (e) {
         debugPrint('Erro ao processar timestamp: $e');
         return null;
@@ -258,7 +378,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   /// Normaliza diferentes formatos de data para YYYY-MM-DD
   String _normalizeDate(String date) {
     String normalized = date.trim();
-    
+
     // Formato DD/MM/YYYY -> YYYY-MM-DD
     if (normalized.contains('/')) {
       final parts = normalized.split('/');
@@ -271,7 +391,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final parts = normalized.split('-');
       return '${parts[0]}-${parts[1].padLeft(2, '0')}-${parts[2].padLeft(2, '0')}';
     }
-    
+
     return normalized;
   }
 
@@ -706,6 +826,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<void> _loadBookedTimeSlots() async {
     if (!mounted) return;
 
+    if (_isHolidayOrSunday(_selectedDate)) {
+      setState(() {
+        _bookedTimeSlots = {};
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final startOfDay = DateTime(
@@ -831,7 +959,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       context: context,
       initialDate: _getNextAvailableDate(_selectedDate),
       firstDate: _getNextAvailableDate(DateTime.now()),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
+      lastDate: DateTime(2026, 12, 31),
       locale: const Locale('pt', 'BR'),
       builder: (context, child) {
         return Theme(
@@ -844,8 +972,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         );
       },
       selectableDayPredicate: (date) {
-        // Retorna false para domingos (weekday == 7)
-        return date.weekday != DateTime.sunday;
+        // Retorna false para domingos e feriados nacionais
+        return !_isHolidayOrSunday(date);
       },
     );
     if (picked != null && picked != _selectedDate) {
@@ -1937,6 +2065,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     value: 'carnauba',
                                     // ignore: deprecated_member_use
                                     groupValue: _selectedCera,
+                                    toggleable: true,
                                     // ignore: deprecated_member_use
                                     onChanged: (String? value) {
                                       setState(() {
@@ -1974,6 +2103,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     value: 'jetcera',
                                     // ignore: deprecated_member_use
                                     groupValue: _selectedCera,
+                                    toggleable: true,
                                     // ignore: deprecated_member_use
                                     onChanged: (String? value) {
                                       setState(() {

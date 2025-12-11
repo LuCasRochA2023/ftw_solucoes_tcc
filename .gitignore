@@ -49,7 +49,7 @@ lib/utils/backend_url.dart
 *.jks
 *.keystore
 android/key.properties
-
+android/upload-key.pem
 # Android Studio will place build artifacts here
 /android/app/debug
 /android/app/profile

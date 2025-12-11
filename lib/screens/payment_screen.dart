@@ -637,11 +637,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // Atualizar status do agendamento para confirmado
+      // Atualizar status do agendamento:
+      // - Confirmado somente se não houver valor restante
+      // - Mantém como pendente (ou parcial) caso ainda falte pagamento
+      final String statusUpdate = widget.amount <= 0 ? 'confirmed' : 'pending';
       await FirebaseFirestore.instance
           .collection('appointments')
           .doc(widget.appointmentId)
-          .update({'status': 'confirmed'});
+          .update({'status': statusUpdate});
 
       // Salvar informações do pagamento para possível devolução futura
       await _savePaymentInfo();
@@ -1034,318 +1037,318 @@ class _PaymentScreenState extends State<PaymentScreen> {
           bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // APENAS UMA MENSAGEM DE CARREGAMENTO
-          if (_isProcessing) ...[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              margin: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.green[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green[200]!),
-              ),
-              child: Column(
-                children: [
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Gerando QR Code PIX...',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green[700],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Isso pode levar alguns segundos',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.green[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Indicador do CPF sendo usado - APENAS QUANDO NÃO ESTÁ PROCESSANDO
-            if (_userCpf != null && _userCpf!.isNotEmpty)
+            // APENAS UMA MENSAGEM DE CARREGAMENTO
+            if (_isProcessing) ...[
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
                   color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: Colors.green[200]!),
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.green[600],
-                      size: 20,
+                    const CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'CPF: ${_formatCpf(_userCpf!)}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.green[700],
-                          fontWeight: FontWeight.w500,
+                    const SizedBox(height: 16),
+                    Text(
+                      'Gerando QR Code PIX...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[700],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Isso pode levar alguns segundos',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.green[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else ...[
+              // Indicador do CPF sendo usado - APENAS QUANDO NÃO ESTÁ PROCESSANDO
+              if (_userCpf != null && _userCpf!.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle,
+                        color: Colors.green[600],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'CPF: ${_formatCpf(_userCpf!)}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.green[700],
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Aviso se CPF não encontrado
+              if (_userCpf == null || _userCpf!.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            color: Colors.orange,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'CPF não encontrado no perfil. Atualize seu perfil para usar seu CPF real.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.orange[700],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => ProfileScreen(
+                                        authService: AuthService()),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.person),
+                              label: const Text('Ir ao Perfil'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange[600],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                _criarPagamentoPix();
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Tentar PIX'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green[600],
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+
+            // QR Code
+            if (_pixQrCode != null && _pixQrCode!.isNotEmpty && !_isProcessing)
+              Container(
+                constraints: const BoxConstraints(maxWidth: 300),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withValues(alpha: 0.3),
+                      spreadRadius: 2,
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    QrImageView(
+                      data: _pixQrCode!,
+                      size: 180.0,
+                      backgroundColor: Colors.white,
+                      dataModuleStyle: const QrDataModuleStyle(
+                        dataModuleShape: QrDataModuleShape.square,
+                        color: Colors.black,
+                      ),
+                      eyeStyle: const QrEyeStyle(
+                        eyeShape: QrEyeShape.square,
+                        color: Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Escaneie o QR Code acima',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.green,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _copyQrCodeToClipboard,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      icon: const Icon(Icons.copy, size: 18),
+                      label: const Text(
+                        'Copiar Código PIX',
+                        style: TextStyle(fontSize: 14),
                       ),
                     ),
                   ],
                 ),
               ),
 
-            // Aviso se CPF não encontrado
-            if (_userCpf == null || _userCpf!.isEmpty)
+            if (_errorMessage != null)
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.symmetric(vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange[200]!),
+                  color: Colors.red[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red[200]!),
                 ),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.info_outline,
-                          color: Colors.orange,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'CPF não encontrado no perfil. Atualize seu perfil para usar seu CPF real.',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.orange[700],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Icon(
+                      Icons.error_outline,
+                      color: Colors.red[600],
+                      size: 48,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Erro de Conexão',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red[700],
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      ProfileScreen(authService: AuthService()),
+                    Text(
+                      'Não foi possível conectar ao servidor de pagamento.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.red[600],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isProcessing
+                            ? null
+                            : () {
+                                setState(() {
+                                  _errorMessage = null;
+                                  _isProcessing = false;
+                                });
+                                _criarPagamentoPix();
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red[600],
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        icon: _isProcessing
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
                                 ),
-                              );
-                            },
-                            icon: const Icon(Icons.person),
-                            label: const Text('Ir ao Perfil'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange[600],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                            ),
+                              )
+                            : const Icon(Icons.refresh, size: 20),
+                        label: Text(
+                          _isProcessing ? 'Tentando...' : 'Tentar Novamente',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              _criarPagamentoPix();
-                            },
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('Tentar PIX'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green[600],
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ),
           ],
-
-          // QR Code
-          if (_pixQrCode != null && _pixQrCode!.isNotEmpty && !_isProcessing)
-            Container(
-              constraints: const BoxConstraints(maxWidth: 300),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withValues(alpha: 0.3),
-                    spreadRadius: 2,
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  QrImageView(
-                    data: _pixQrCode!,
-                    size: 180.0,
-                    backgroundColor: Colors.white,
-                    dataModuleStyle: const QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: Colors.black,
-                    ),
-                    eyeStyle: const QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Escaneie o QR Code acima',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.green,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _copyQrCodeToClipboard,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: const Icon(Icons.copy, size: 18),
-                    label: const Text(
-                      'Copiar Código PIX',
-                      style: TextStyle(fontSize: 14),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-          if (_errorMessage != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              margin: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Colors.red[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red[200]!),
-              ),
-              child: Column(
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    color: Colors.red[600],
-                    size: 48,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Erro de Conexão',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red[700],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Não foi possível conectar ao servidor de pagamento.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.red[600],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _isProcessing
-                          ? null
-                          : () {
-                              setState(() {
-                                _errorMessage = null;
-                                _isProcessing = false;
-                              });
-                              _criarPagamentoPix();
-                            },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red[600],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      icon: _isProcessing
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : const Icon(Icons.refresh, size: 20),
-                      label: Text(
-                        _isProcessing ? 'Tentando...' : 'Tentar Novamente',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
         ),
       ),
     );
@@ -1361,361 +1364,358 @@ class _PaymentScreenState extends State<PaymentScreen> {
           bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Valor a pagar: R\$ ${widget.amount.toStringAsFixed(2)}',
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
-              const Text(
-                'Pagamento com Cartão',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+            ),
+            const Text(
+              'Pagamento com Cartão',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 24),
-              Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _cardNumberController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(19),
-                        _CardNumberInputFormatter(),
-                      ],
-                      decoration: InputDecoration(
-                        labelText: 'Número do Cartão',
-                        prefixIcon: const Icon(Icons.credit_card),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 18, horizontal: 16),
-                        hintText: '1234 5678 9012 3456',
-                      ),
-                      validator: (v) =>
-                          v == null || v.replaceAll(' ', '').length < 16
-                              ? 'Número inválido'
-                              : null,
+            ),
+            const SizedBox(height: 24),
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  TextFormField(
+                    controller: _cardNumberController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(19),
+                      _CardNumberInputFormatter(),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'Número do Cartão',
+                      prefixIcon: const Icon(Icons.credit_card),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18, horizontal: 16),
+                      hintText: '1234 5678 9012 3456',
                     ),
-                    const SizedBox(height: 20),
-                    Column(
-                      children: [
-                        TextFormField(
-                          controller: _expiryController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(4),
-                            _ExpiryDateInputFormatter(),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'Validade (MM/AA)',
-                            prefixIcon: const Icon(Icons.date_range),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 18, horizontal: 16),
-                            hintText: '12/25',
-                          ),
-                          validator: (v) =>
-                              v == null || v.length < 5 ? 'Inválido' : null,
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _cvvController,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(4),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'CVV',
-                            prefixIcon: const Icon(Icons.lock),
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                            fillColor: Colors.grey[100],
-                            contentPadding: const EdgeInsets.symmetric(
-                                vertical: 18, horizontal: 16),
-                            hintText: '123',
-                          ),
-                          validator: (v) =>
-                              v == null || v.length < 3 ? 'Inválido' : null,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Nome no Cartão',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: Colors.grey[100],
-                        contentPadding: const EdgeInsets.symmetric(
-                            vertical: 18, horizontal: 16),
-                      ),
-                      validator: (v) =>
-                          v == null || v.isEmpty ? 'Obrigatório' : null,
-                    ),
-                    const SizedBox(height: 20),
-                    if (_userCpf != null && _userCpf!.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[100],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.badge, color: Colors.grey),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'CPF do Titular',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  Text(
-                                    _userCpf!,
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.orange[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange[300]!),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.warning, color: Colors.orange[600]),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'CPF não encontrado',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                      color: Colors.orange[700],
-                                    ),
-                                  ),
-                                  Text(
-                                    'Atualize seu perfil para incluir o CPF',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.orange[600],
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              if (_cardError != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(_cardError!,
-                      style: const TextStyle(color: Colors.red)),
-                ),
-              if (_cardSuccess != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(_cardSuccess!,
-                      style: const TextStyle(color: Colors.green)),
-                ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: const Icon(Icons.credit_card),
-                  label: _isCardProcessing
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Pagar com Cartão',
-                          style: TextStyle(fontSize: 18)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 2,
+                    validator: (v) =>
+                        v == null || v.replaceAll(' ', '').length < 16
+                            ? 'Número inválido'
+                            : null,
                   ),
-                  onPressed: _isCardProcessing
-                      ? null
-                      : () async {
-                          debugPrint(
-                              '=== DEBUG: Botão de pagamento pressionado ===');
-                          debugPrint(
-                              'Formulário válido: ${_formKey.currentState?.validate() ?? false}');
-                          debugPrint('CPF carregado: $_userCpf');
-                          debugPrint('Nome: ${_nameController.text}');
-                          debugPrint('Cartão: ${_cardNumberController.text}');
-                          debugPrint('Validade: ${_expiryController.text}');
-                          debugPrint('CVV: ${_cvvController.text}');
+                  const SizedBox(height: 20),
+                  Column(
+                    children: [
+                      TextFormField(
+                        controller: _expiryController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(4),
+                          _ExpiryDateInputFormatter(),
+                        ],
+                        decoration: InputDecoration(
+                          labelText: 'Validade (MM/AA)',
+                          prefixIcon: const Icon(Icons.date_range),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
+                          hintText: '12/25',
+                        ),
+                        validator: (v) =>
+                            v == null || v.length < 5 ? 'Inválido' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _cvvController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(4),
+                        ],
+                        decoration: InputDecoration(
+                          labelText: 'CVV',
+                          prefixIcon: const Icon(Icons.lock),
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          contentPadding: const EdgeInsets.symmetric(
+                              vertical: 18, horizontal: 16),
+                          hintText: '123',
+                        ),
+                        validator: (v) =>
+                            v == null || v.length < 3 ? 'Inválido' : null,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: InputDecoration(
+                      labelText: 'Nome no Cartão',
+                      prefixIcon: const Icon(Icons.person),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      contentPadding: const EdgeInsets.symmetric(
+                          vertical: 18, horizontal: 16),
+                    ),
+                    validator: (v) =>
+                        v == null || v.isEmpty ? 'Obrigatório' : null,
+                  ),
+                  const SizedBox(height: 20),
+                  if (_userCpf != null && _userCpf!.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.badge, color: Colors.grey),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'CPF do Titular',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                Text(
+                                  _userCpf!,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.orange[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.orange[300]!),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.orange[600]),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'CPF não encontrado',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.orange[700],
+                                  ),
+                                ),
+                                Text(
+                                  'Atualize seu perfil para incluir o CPF',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.orange[600],
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (_cardError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_cardError!,
+                    style: const TextStyle(color: Colors.red)),
+              ),
+            if (_cardSuccess != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(_cardSuccess!,
+                    style: const TextStyle(color: Colors.green)),
+              ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.credit_card),
+                label: _isCardProcessing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text('Pagar com Cartão',
+                        style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+                onPressed: _isCardProcessing
+                    ? null
+                    : () async {
+                        debugPrint(
+                            '=== DEBUG: Botão de pagamento pressionado ===');
+                        debugPrint(
+                            'Formulário válido: ${_formKey.currentState?.validate() ?? false}');
+                        debugPrint('CPF carregado: $_userCpf');
+                        debugPrint('Nome: ${_nameController.text}');
+                        debugPrint('Cartão: ${_cardNumberController.text}');
+                        debugPrint('Validade: ${_expiryController.text}');
+                        debugPrint('CVV: ${_cvvController.text}');
 
-                          debugPrint(
-                              '=== DEBUG: Verificando validação do formulário ===');
-                          final isValid =
-                              _formKey.currentState?.validate() ?? false;
-                          debugPrint('Formulário válido: $isValid');
+                        debugPrint(
+                            '=== DEBUG: Verificando validação do formulário ===');
+                        final isValid =
+                            _formKey.currentState?.validate() ?? false;
+                        debugPrint('Formulário válido: $isValid');
 
-                          if (isValid) {
-                            // Verificar se o CPF foi carregado
-                            debugPrint('=== DEBUG: Verificando CPF ===');
-                            debugPrint('CPF atual: $_userCpf');
+                        if (isValid) {
+                          // Verificar se o CPF foi carregado
+                          debugPrint('=== DEBUG: Verificando CPF ===');
+                          debugPrint('CPF atual: $_userCpf');
+                          if (_userCpf == null || _userCpf!.isEmpty) {
+                            debugPrint(
+                                'CPF não carregado, tentando carregar novamente...');
+                            await _loadUserCpf();
+                            debugPrint('CPF após recarregar: $_userCpf');
                             if (_userCpf == null || _userCpf!.isEmpty) {
-                              debugPrint(
-                                  'CPF não carregado, tentando carregar novamente...');
-                              await _loadUserCpf();
-                              debugPrint('CPF após recarregar: $_userCpf');
-                              if (_userCpf == null || _userCpf!.isEmpty) {
-                                setState(() {
-                                  _cardError =
-                                      'CPF não encontrado no perfil. Por favor, atualize seu perfil primeiro.';
-                                });
-                                return;
-                              }
-                            }
-
-                            debugPrint(
-                                '=== DEBUG: Verificando campos do formulário ===');
-                            debugPrint('Nome: "${_nameController.text}"');
-                            debugPrint(
-                                'Cartão: "${_cardNumberController.text}"');
-                            debugPrint('Validade: "${_expiryController.text}"');
-                            debugPrint('CVV: "${_cvvController.text}"');
-
-                            setState(() {
-                              _isCardProcessing = true;
-                              _cardError = null;
-                              _cardSuccess = null;
-                            });
-                            final exp = _expiryController.text.split('/');
-                            debugPrint('Validade dividida: $exp');
-                            if (exp.length != 2) {
-                              debugPrint('Erro: Validade inválida');
                               setState(() {
-                                _cardError = 'Validade inválida';
-                                _isCardProcessing = false;
+                                _cardError =
+                                    'CPF não encontrado no perfil. Por favor, atualize seu perfil primeiro.';
                               });
                               return;
-                            }
-
-                            // Verificar se são números válidos
-                            final month = exp[0].trim();
-                            final year = exp[1].trim();
-                            if (month.isEmpty ||
-                                year.isEmpty ||
-                                int.tryParse(month) == null ||
-                                int.tryParse(year) == null) {
-                              debugPrint('Erro: Mês ou ano inválido');
-                              setState(() {
-                                _cardError = 'Formato de data inválido';
-                                _isCardProcessing = false;
-                              });
-                              return;
-                            }
-                            debugPrint('CPF antes da tokenização: $_userCpf');
-                            debugPrint(
-                                'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
-                            debugPrint(
-                                'CPF é o de teste? ${_userCpf == '03557007197'}');
-                            debugPrint(
-                                'CPF limpo: ${_userCpf?.replaceAll(RegExp(r'[^\d]'), '')}');
-                            debugPrint('=== DEBUG: Antes de gerar token ===');
-                            debugPrint('CPF para tokenização: $_userCpf');
-                            debugPrint(
-                                'Nome do titular: ${_nameController.text}');
-                            debugPrint(
-                                'Número do cartão: ${_cardNumberController.text}');
-                            debugPrint('Validade: ${_expiryController.text}');
-
-                            final cardToken = await gerarTokenCartao(
-                              cardNumber: _cardNumberController.text,
-                              expirationMonth: month,
-                              expirationYear: year,
-                              cvv: _cvvController.text,
-                              cardholderName: _nameController.text,
-                              cpf: _userCpf!, // Usar CPF do usuário
-                            );
-                            debugPrint(
-                                '=== DEBUG: Token gerado: $cardToken ===');
-                            if (cardToken != null) {
-                              try {
-                                debugPrint(
-                                    '=== DEBUG: Chamando pagarComCartao ===');
-                                await pagarComCartao(cardToken);
-                                setState(() {
-                                  _cardSuccess =
-                                      'Pagamento realizado com sucesso!';
-                                });
-                              } catch (e) {
-                                setState(() {
-                                  _cardError =
-                                      'Erro ao processar pagamento: $e';
-                                });
-                              } finally {
-                                setState(() {
-                                  _isCardProcessing = false;
-                                });
-                              }
-                            } else {
-                              setState(() {
-                                _isCardProcessing = false;
-                              });
                             }
                           }
-                        },
-                ),
+
+                          debugPrint(
+                              '=== DEBUG: Verificando campos do formulário ===');
+                          debugPrint('Nome: "${_nameController.text}"');
+                          debugPrint('Cartão: "${_cardNumberController.text}"');
+                          debugPrint('Validade: "${_expiryController.text}"');
+                          debugPrint('CVV: "${_cvvController.text}"');
+
+                          setState(() {
+                            _isCardProcessing = true;
+                            _cardError = null;
+                            _cardSuccess = null;
+                          });
+                          final exp = _expiryController.text.split('/');
+                          debugPrint('Validade dividida: $exp');
+                          if (exp.length != 2) {
+                            debugPrint('Erro: Validade inválida');
+                            setState(() {
+                              _cardError = 'Validade inválida';
+                              _isCardProcessing = false;
+                            });
+                            return;
+                          }
+
+                          // Verificar se são números válidos
+                          final month = exp[0].trim();
+                          final year = exp[1].trim();
+                          if (month.isEmpty ||
+                              year.isEmpty ||
+                              int.tryParse(month) == null ||
+                              int.tryParse(year) == null) {
+                            debugPrint('Erro: Mês ou ano inválido');
+                            setState(() {
+                              _cardError = 'Formato de data inválido';
+                              _isCardProcessing = false;
+                            });
+                            return;
+                          }
+                          debugPrint('CPF antes da tokenização: $_userCpf');
+                          debugPrint(
+                              'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
+                          debugPrint(
+                              'CPF é o de teste? ${_userCpf == '03557007197'}');
+                          debugPrint(
+                              'CPF limpo: ${_userCpf?.replaceAll(RegExp(r'[^\d]'), '')}');
+                          debugPrint('=== DEBUG: Antes de gerar token ===');
+                          debugPrint('CPF para tokenização: $_userCpf');
+                          debugPrint(
+                              'Nome do titular: ${_nameController.text}');
+                          debugPrint(
+                              'Número do cartão: ${_cardNumberController.text}');
+                          debugPrint('Validade: ${_expiryController.text}');
+
+                          final cardToken = await gerarTokenCartao(
+                            cardNumber: _cardNumberController.text,
+                            expirationMonth: month,
+                            expirationYear: year,
+                            cvv: _cvvController.text,
+                            cardholderName: _nameController.text,
+                            cpf: _userCpf!, // Usar CPF do usuário
+                          );
+                          debugPrint('=== DEBUG: Token gerado: $cardToken ===');
+                          if (cardToken != null) {
+                            try {
+                              debugPrint(
+                                  '=== DEBUG: Chamando pagarComCartao ===');
+                              await pagarComCartao(cardToken);
+                              setState(() {
+                                _cardSuccess =
+                                    'Pagamento realizado com sucesso!';
+                              });
+                            } catch (e) {
+                              setState(() {
+                                _cardError = 'Erro ao processar pagamento: $e';
+                              });
+                            } finally {
+                              setState(() {
+                                _isCardProcessing = false;
+                              });
+                            }
+                          } else {
+                            setState(() {
+                              _isCardProcessing = false;
+                            });
+                          }
+                        }
+                      },
               ),
-            ],
+            ),
+          ],
         ),
       ),
     );
