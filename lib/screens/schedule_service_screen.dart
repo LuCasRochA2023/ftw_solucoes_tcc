@@ -9,6 +9,8 @@ import '../services/auth_service.dart';
 import 'payment_screen.dart';
 import 'cars_screen.dart';
 import 'home_screen.dart';
+import 'profile_screen.dart';
+import '../utils/validation_utils.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> services;
@@ -35,6 +37,182 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   List<Map<String, dynamic>> _userCars = [];
   final TextEditingController _balanceAmountController =
       TextEditingController();
+
+  static bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  static const Duration _pendingHoldDuration = Duration(minutes: 30);
+
+  Future<void> _expireStalePendingAppointments(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) async {
+    final now = DateTime.now();
+    final staleRefs = <DocumentReference<Map<String, dynamic>>>[];
+
+    for (final doc in docs) {
+      final data = doc.data();
+      final status = data['status'] as String?;
+      if (status != 'pending') continue;
+
+      final createdAtTs = data['createdAt'];
+      if (createdAtTs is! Timestamp) continue; // sem createdAt: não expirar
+
+      final createdAt = createdAtTs.toDate();
+      if (createdAt.isAfter(now)) continue; // clock skew
+
+      if (now.difference(createdAt) > _pendingHoldDuration) {
+        staleRefs.add(doc.reference);
+      }
+    }
+
+    if (staleRefs.isEmpty) return;
+
+    try {
+      final batch = _firestore.batch();
+      for (final ref in staleRefs) {
+        batch.update(ref, {
+          'status': 'cancelled',
+          'cancelReason': 'pending_timeout',
+          'cancelledAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      debugPrint(
+          '=== DEBUG: Expirados ${staleRefs.length} agendamentos pending (timeout 30m) ===');
+    } catch (e) {
+      // Não bloquear a UI por falha de limpeza.
+      debugPrint('Erro ao expirar pendências antigas: $e');
+    }
+  }
+
+  bool _isPendingHoldActive(Map<String, dynamic> data) {
+    final status = data['status'] as String?;
+    if (status != 'pending') return false;
+
+    final createdAtTs = data['createdAt'];
+    if (createdAtTs is! Timestamp) {
+      // Se não tem createdAt, por segurança considera como ainda ativo para não
+      // liberar indevidamente um horário que pode estar em fluxo de pagamento.
+      return true;
+    }
+
+    final createdAt = createdAtTs.toDate();
+    final now = DateTime.now();
+    if (createdAt.isAfter(now)) return true; // clock skew / server timestamp
+    return now.difference(createdAt) <= _pendingHoldDuration;
+  }
+
+  bool _isBlockingStatus(Map<String, dynamic> data) {
+    final status = data['status'] as String?;
+    if (status == 'confirmed') return true;
+    if (status == 'pending') return _isPendingHoldActive(data);
+    return false;
+  }
+
+  bool _isSlotInPast(DateTime slotTime) {
+    final now = DateTime.now();
+    // Só bloqueia "horários passados" quando a data selecionada for hoje.
+    if (!_isSameDay(_selectedDate, now)) return false;
+    return slotTime.isBefore(now);
+  }
+
+  List<String> _getMissingProfileFields(Map<String, dynamic>? userData) {
+    final missing = <String>[];
+    if (userData == null) {
+      return [
+        'nome',
+        'CPF',
+        'telefone',
+        'endereço (CEP, rua, número, bairro, cidade, UF)',
+      ];
+    }
+
+    final name = (userData['name'] as String?)?.trim() ?? '';
+    final cpf = (userData['cpf'] as String?)?.trim() ?? '';
+    final phone = (userData['phone'] as String?)?.trim() ?? '';
+
+    if (!ValidationUtils.isValidName(name)) missing.add('nome completo');
+    if (!ValidationUtils.isValidCpf(cpf)) missing.add('CPF válido');
+    if (!ValidationUtils.isValidPhone(phone)) missing.add('telefone válido');
+
+    final address = userData['address'] as Map<String, dynamic>?;
+    final cep = (address?['cep'] as String?)?.trim() ?? '';
+    final street = (address?['street'] as String?)?.trim() ?? '';
+    final number = (address?['number'] as String?)?.trim() ?? '';
+    final neighborhood = (address?['neighborhood'] as String?)?.trim() ?? '';
+    final city = (address?['city'] as String?)?.trim() ?? '';
+    final state = (address?['state'] as String?)?.trim() ?? '';
+
+    if (!ValidationUtils.isValidCep(cep)) missing.add('CEP válido');
+    if (street.isEmpty) missing.add('rua');
+    if (!ValidationUtils.isValidNumber(number)) missing.add('número');
+    if (neighborhood.isEmpty) missing.add('bairro');
+    if (city.isEmpty) missing.add('cidade');
+    if (!ValidationUtils.isValidState(state)) missing.add('UF');
+
+    return missing;
+  }
+
+  Future<bool> _ensureProfileComplete() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      final userData = doc.data();
+      final missing = _getMissingProfileFields(userData);
+
+      if (missing.isEmpty) return true;
+
+      if (!mounted) return false;
+      final goToProfile = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(
+            'Complete seu perfil',
+            style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Para agendar serviços, complete os dados do seu perfil:\n\n- ${missing.join('\n- ')}',
+            style: GoogleFonts.poppins(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Agora não', style: GoogleFonts.poppins()),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('Ir para Perfil', style: GoogleFonts.poppins()),
+            ),
+          ],
+        ),
+      );
+
+      if (goToProfile == true && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                ProfileScreen(authService: widget.authService),
+          ),
+        );
+      }
+      return false;
+    } catch (e) {
+      // Se não conseguir validar, não deixa agendar (evita agendamento sem dados).
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Não foi possível validar seu perfil: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return false;
+    }
+  }
 
   // Função para obter a próxima data disponível (não domingo e não feriado)
   static DateTime _getNextAvailableDate(DateTime date) {
@@ -180,6 +358,27 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _mainColor = widget.services.first['color'] ?? Colors.blue;
     _mainIcon = widget.services.first['icon'] ?? Icons.build;
     await _initializeDateFormatting();
+
+    // Se hoje já passou do último horário padrão, começa direto no próximo dia disponível.
+    final now = DateTime.now();
+    if (_isSameDay(_selectedDate, now)) {
+      final defaultSlotsToday = _getDefaultSlotsForDate(_selectedDate);
+      if (defaultSlotsToday.isNotEmpty) {
+        final last = defaultSlotsToday.last.split(':');
+        final lastSlotTime = DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          int.parse(last[0]),
+          int.parse(last[1]),
+        );
+        if (lastSlotTime.isBefore(now)) {
+          _selectedDate =
+              _getNextAvailableDate(now.add(const Duration(days: 1)));
+        }
+      }
+    }
+
     await _generateTimeSlots();
     await _loadBookedTimeSlots();
     await _loadUserCars();
@@ -442,8 +641,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint(
           'Agendamentos pendentes (excluindo reagendamento): ${otherPendingAppointments.length}');
 
-      if (otherPendingAppointments.isNotEmpty) {
-        final pendingAppointment = otherPendingAppointments.first;
+      // Considerar apenas pendências "ativas" (hold de 30 minutos).
+      final activePending = otherPendingAppointments.where((doc) {
+        final data = doc.data();
+        return _isPendingHoldActive(data);
+      }).toList();
+
+      if (activePending.isNotEmpty) {
+        final pendingAppointment = activePending.first;
         final data = pendingAppointment.data();
         final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
         final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
@@ -484,8 +689,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         // Filtrar agendamentos relevantes
         final relevantAppointments = querySnapshot.docs.where((doc) {
           final data = doc.data();
-          final status = data['status'] as String?;
-          final isRelevantStatus = status == 'confirmed' || status == 'pending';
+          final isRelevantStatus = _isBlockingStatus(data);
 
           // Se for reagendamento, excluir o agendamento que está sendo reagendado
           if (widget.rescheduleAppointmentId != null &&
@@ -586,10 +790,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       // Verificar se há conflito de horário
       for (var doc in appointmentsQuery.docs) {
         final data = doc.data();
-        final status = data['status'] as String?;
-
-        // Filtrar apenas agendamentos confirmados e pendentes
-        if (status != 'confirmed' && status != 'pending') {
+        // Filtrar apenas agendamentos que realmente bloqueiam:
+        // - confirmed: sempre
+        // - pending: só por 30 minutos após createdAt
+        if (!_isBlockingStatus(data)) {
           continue;
         }
 
@@ -601,7 +805,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           debugPrint(
               '=== DEBUG: Horário já tem agendamento confirmado/pendente ===');
           debugPrint('Agendamento conflitante: ${doc.id}');
-          debugPrint('Status: $status');
+          debugPrint('Status: ${data['status']}');
           debugPrint(
               'Horário do agendamento: ${DateFormat('HH:mm').format(appointmentDateTime)}');
           return false;
@@ -643,7 +847,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final relevantAppointments = querySnapshot.docs.where((doc) {
         final data = doc.data();
         final status = data['status'] as String?;
-        final isRelevantStatus = status == 'confirmed' || status == 'pending';
+        final isRelevantStatus = _isBlockingStatus(data);
 
         debugPrint('=== DEBUG: Verificando agendamento ${doc.id} ===');
         debugPrint('Status: $status');
@@ -861,6 +1065,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       debugPrint('Encontrado ${querySnapshot.docs.length} compromissos');
 
+      // Limpar pendências antigas (pending > 30 minutos) para liberar horários.
+      await _expireStalePendingAppointments(querySnapshot.docs);
+
       final Map<String, String> bookedSlots = {};
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
@@ -871,8 +1078,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         debugPrint('Status: $status');
         debugPrint('DateTime: ${data['dateTime']}');
 
-        // Considerar agendamentos confirmados e pendentes como ocupados
-        if (status == 'confirmed' || status == 'pending') {
+        // Considerar como ocupado:
+        // - confirmed: sempre
+        // - pending: apenas dentro do "hold" de 30 minutos após createdAt
+        if (_isBlockingStatus(data)) {
           final dateTime = (data['dateTime'] as Timestamp).toDate();
           dynamic serviceField =
               data['services'] ?? data['service']; // Novo formato com fallback
@@ -892,8 +1101,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           }
 
           final timeSlot = DateFormat('HH:mm').format(dateTime);
-          final statusText =
-              status == 'confirmed' ? ' (Confirmado)' : ' (Pendente)';
+          final statusText = status == 'confirmed'
+              ? ' (Confirmado)'
+              : (_isPendingHoldActive(data)
+                  ? ' (Pendente)'
+                  : ' (Pendente exp.)');
           bookedSlots[timeSlot] = service + statusText;
           debugPrint(
               'Booked slot: $timeSlot for service: $service - Status: $status');
@@ -1014,6 +1226,25 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       return;
     }
 
+    // Validação extra: não permitir agendar em data/hora no passado.
+    final parts = _selectedTime!.split(':');
+    final selectedDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+    );
+    if (selectedDateTime.isBefore(DateTime.now())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Selecione uma data/horário a partir de agora.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     if (_selectedCar == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1023,6 +1254,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       );
       return;
     }
+
+    // Só permite agendar se o perfil estiver completo.
+    final profileOk = await _ensureProfileComplete();
+    if (!profileOk) return;
 
     // Verificar saldo antes de agendar
     await _checkBalanceAndSchedule();
@@ -1564,6 +1799,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[0]),
         int.parse(timeParts[1]),
       );
+
+      // Garantia no backend-side do app: não salvar agendamento no passado.
+      if (dateTime.isBefore(DateTime.now())) {
+        throw ('Data/horário inválido: selecione um horário a partir de agora.');
+      }
 
       // Verificar se o usuário já tem agendamentos pendentes
       await _checkUserPendingAppointments();
@@ -2280,11 +2520,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           );
                           final isAvailable =
                               _isBlockAvailable(slotTime, _bookedTimeSlots);
+                          final isPast = _isSlotInPast(slotTime);
+                          final canSelect = isAvailable && !isPast;
                           // Não esconder horários - mostrar todos, mas marcar os ocupados
                           return Tooltip(
-                            message: isAvailable ? 'Disponível' : 'Ocupado',
+                            message: isPast
+                                ? 'Horário já passou'
+                                : (isAvailable ? 'Disponível' : 'Ocupado'),
                             child: InkWell(
-                              onTap: isAvailable
+                              onTap: canSelect
                                   ? () async {
                                       // Verificar se o horário ainda está disponível
                                       final isStillAvailable =
@@ -2312,13 +2556,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? _mainColor
-                                      : (isAvailable
+                                      : (canSelect
                                           ? Colors.white
                                           : Colors.grey.shade300),
                                   border: Border.all(
                                     color: isSelected
                                         ? _mainColor
-                                        : (isAvailable
+                                        : (canSelect
                                             ? Colors.grey.shade300
                                             : Colors.red.shade300),
                                   ),
@@ -2330,7 +2574,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                     style: GoogleFonts.poppins(
                                       color: isSelected
                                           ? Colors.white
-                                          : (isAvailable
+                                          : (canSelect
                                               ? Colors.black87
                                               : Colors.grey.shade600),
                                       fontWeight: isSelected

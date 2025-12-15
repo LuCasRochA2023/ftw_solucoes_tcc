@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ftw.app">
+    package="com.ftwsolucoes.ftw_solucoes">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="ftw_solucoes"
