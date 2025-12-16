@@ -32,6 +32,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoggingOut = false;
   String? _currentPhotoUrl;
   final _formKey = GlobalKey<FormState>();
+  final _nameFieldKey = GlobalKey<FormFieldState<String>>();
+  final _cpfFieldKey = GlobalKey<FormFieldState<String>>();
+  final _phoneFieldKey = GlobalKey<FormFieldState<String>>();
+  final _cepFieldKey = GlobalKey<FormFieldState<String>>();
+  final _streetFieldKey = GlobalKey<FormFieldState<String>>();
+  final _numberFieldKey = GlobalKey<FormFieldState<String>>();
+  final _neighborhoodFieldKey = GlobalKey<FormFieldState<String>>();
+  final _cityFieldKey = GlobalKey<FormFieldState<String>>();
+  final _stateFieldKey = GlobalKey<FormFieldState<String>>();
   final _nameController = TextEditingController();
   final _cpfController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -327,38 +336,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
-      final response = await http.get(
-        Uri.parse('https://viacep.com.br/ws/$cep/json/'),
-      );
+      final response = await http
+          .get(
+            Uri.parse('https://viacep.com.br/ws/$cep/json/'),
+          )
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['erro'] == true) {
-          setState(() {
-            _cepError = 'CEP não encontrado';
-          });
-          return;
+          if (mounted) {
+            setState(() {
+              _cepError = 'CEP não encontrado';
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _streetController.text = data['logradouro'] ?? '';
+              _neighborhoodController.text = data['bairro'] ?? '';
+              _cityController.text = data['localidade'] ?? '';
+              _stateController.text = data['uf'] ?? '';
+            });
+          }
         }
-
-        setState(() {
-          _streetController.text = data['logradouro'] ?? '';
-          _neighborhoodController.text = data['bairro'] ?? '';
-          _cityController.text = data['localidade'] ?? '';
-          _stateController.text = data['uf'] ?? '';
-        });
       } else {
+        if (mounted) {
+          setState(() {
+            _cepError = 'Erro ao buscar CEP';
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         setState(() {
           _cepError = 'Erro ao buscar CEP';
         });
       }
-    } catch (e) {
-      setState(() {
-        _cepError = 'Erro ao buscar CEP';
-      });
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -385,8 +405,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _scrollToFirstInvalidField() {
+    final ordered = <GlobalKey<FormFieldState<String>>>[
+      _nameFieldKey,
+      _cpfFieldKey,
+      _phoneFieldKey,
+      _cepFieldKey,
+      _streetFieldKey,
+      _numberFieldKey,
+      _neighborhoodFieldKey,
+      _cityFieldKey,
+      _stateFieldKey,
+    ];
+
+    for (final key in ordered) {
+      final hasError = key.currentState?.hasError ?? false;
+      final isCepKey = identical(key, _cepFieldKey);
+      final cepHasExternalError = isCepKey && _cepError != null;
+      if (!hasError && !cepHasExternalError) continue;
+
+      final ctx = key.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 350),
+          curve: Curves.easeInOut,
+          alignment: 0.15,
+        );
+      }
+      break;
+    }
+  }
+
   Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    // Fechar teclado ao clicar em "Salvar Alterações"
+    FocusManager.instance.primaryFocus?.unfocus();
+
+    final isValid = _formKey.currentState!.validate();
+    if (!isValid) {
+      _scrollToFirstInvalidField();
+      return;
+    }
+
+    // Se o CEP foi buscado e deu erro (ex.: "CEP não encontrado"), não salvar.
+    if (_cepError != null) {
+      _showErrorMessage(_cepError!);
+      _scrollToFirstInvalidField();
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -397,6 +463,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Verificar se CPF já está cadastrado por outro usuário
       final isDuplicate = await _isCpfAlreadyRegistered(_cpfController.text);
       if (isDuplicate) {
+        _scrollToFirstInvalidField();
         throw ('CPF já está cadastrado no sistema');
       }
 
@@ -410,15 +477,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'city': _cityController.text,
         'state': _stateController.text,
       };
-
-      if (address['cep']!.isEmpty ||
-          address['street']!.isEmpty ||
-          address['number']!.isEmpty ||
-          address['neighborhood']!.isEmpty ||
-          address['city']!.isEmpty ||
-          address['state']!.isEmpty) {
-        throw ('Por favor, preencha todos os campos obrigatórios do endereço');
-      }
 
       // Atualizar dados no Firestore
       await FirebaseFirestore.instance
@@ -468,6 +526,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
+    GlobalKey<FormFieldState<String>>? fieldKey,
     String? hint,
     TextInputFormatter? formatter,
     TextInputType? keyboardType,
@@ -479,6 +538,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
+        key: fieldKey,
         controller: controller,
         decoration: InputDecoration(
           labelText: label,
@@ -637,6 +697,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _buildTextField(
                             controller: _nameController,
                             label: 'Nome Completo',
+                            fieldKey: _nameFieldKey,
                             keyboardType: TextInputType.name,
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -651,6 +712,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _buildTextField(
                             controller: _cpfController,
                             label: 'CPF',
+                            fieldKey: _cpfFieldKey,
                             formatter: _cpfFormatter,
                             keyboardType: TextInputType.number,
                             validator: (value) {
@@ -666,6 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           _buildTextField(
                             controller: _phoneController,
                             label: 'Telefone',
+                            fieldKey: _phoneFieldKey,
                             formatter: _phoneFormatter,
                             keyboardType: TextInputType.phone,
                             validator: (value) {
@@ -748,6 +811,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextFormField(
+          key: _cepFieldKey,
           controller: _cepController,
           decoration: InputDecoration(
             labelText: 'CEP',
@@ -775,6 +839,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         TextFormField(
+          key: _streetFieldKey,
           controller: _streetController,
           decoration: const InputDecoration(
             labelText: 'Rua',
@@ -796,6 +861,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               flex: 2,
               child: TextFormField(
+                key: _numberFieldKey,
                 controller: _numberController,
                 decoration: const InputDecoration(
                   labelText: 'Número',
@@ -828,6 +894,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         const SizedBox(height: 16),
         TextFormField(
+          key: _neighborhoodFieldKey,
           controller: _neighborhoodController,
           decoration: const InputDecoration(
             labelText: 'Bairro',
@@ -849,6 +916,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               flex: 3,
               child: TextFormField(
+                key: _cityFieldKey,
                 controller: _cityController,
                 decoration: const InputDecoration(
                   labelText: 'Cidade',
@@ -869,6 +937,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               flex: 2,
               child: TextFormField(
+                key: _stateFieldKey,
                 controller: _stateController,
                 decoration: const InputDecoration(
                   labelText: 'Estado',
