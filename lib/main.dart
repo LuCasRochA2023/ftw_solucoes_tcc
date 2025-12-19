@@ -41,8 +41,13 @@ Future<void> initializeFirebase() async {
 }
 
 void main() async {
-  await dotenv.load(fileName: '.env');
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    // Se falhar carregar o .env, o app ainda pode subir (mas vai cair em fallback).
+    debugPrint('Erro ao carregar .env: $e');
+  }
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

@@ -77,6 +77,7 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             } else {
                 println("⚠️  Release signing config not provided. Using debug signing config for release build.")
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }

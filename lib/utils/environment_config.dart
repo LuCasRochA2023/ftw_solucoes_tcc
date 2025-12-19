@@ -26,6 +26,16 @@ class EnvironmentConfig {
     return dotenv.env['PAYMENT_URL'] ?? 'https://srv962030.hstgr.cloud';
   }
 
+  // Webhook do Mercado Pago (opcional):
+  // Se não for enviado pelo app, o backend pode usar o MP_NOTIFICATION_URL do .env dele.
+  static String? get mpNotificationUrl {
+    final v = dotenv.env['MP_NOTIFICATION_URL'];
+    if (v == null) return null;
+    final trimmed = v.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   // URL ativa baseada no ambiente
   static String get activeBackendUrl {
     if (isProduction) {
@@ -61,6 +71,7 @@ class EnvironmentConfig {
   // Métodos para obter configurações do Mercado Pago
   static String get mercadopagoPublicKeyValue => mercadopagoPublicKey;
   static String get mercadopagoAccessTokenValue => mercadopagoAccessToken;
+  static String? get mpNotificationUrlValue => mpNotificationUrl;
 
   // Método para obter URL de pagamento
   static String get paymentUrlValue => paymentUrl;

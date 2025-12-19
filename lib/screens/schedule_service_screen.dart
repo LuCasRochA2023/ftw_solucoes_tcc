@@ -29,7 +29,9 @@ class ScheduleServiceScreen extends StatefulWidget {
 }
 
 class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
-  DateTime _selectedDate = _getNextAvailableDate(DateTime.now());
+  // Regra: agendamentos só podem ser feitos a partir do dia seguinte (amanhã).
+  // Além disso, mantemos a regra de não permitir domingos/feriados.
+  DateTime _selectedDate = _getMinBookingDate();
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
@@ -54,6 +56,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final data = doc.data();
       final status = data['status'] as String?;
       if (status != 'pending') continue;
+
+      // Se estamos reagendando, nunca expirar/cancelar o próprio agendamento.
+      if (widget.rescheduleAppointmentId != null &&
+          doc.id == widget.rescheduleAppointmentId) {
+        continue;
+      }
 
       final createdAtTs = data['createdAt'];
       if (createdAtTs is! Timestamp) continue; // sem createdAt: não expirar
@@ -223,6 +231,15 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return currentDate;
   }
 
+  // Data mínima para agendamento: amanhã (normalizado) e, se cair em domingo/feriado,
+  // pula para o próximo dia disponível.
+  static DateTime _getMinBookingDate() {
+    final now = DateTime.now();
+    final tomorrow =
+        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    return _getNextAvailableDate(tomorrow);
+  }
+
   // Variável para opcional de cera (apenas uma seleção)
   String? _selectedCera;
 
@@ -321,10 +338,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Mapa de preços dos serviços
   static const Map<String, double> _servicePrices = {
-    'Lavagem SUV': 80.0,
-    'Lavagem Carro Comum': 70.0,
-    'Lavagem Caminhonete': 100.0,
-    'Leva e Traz': 20.0,
+    'Lavagem SUV': 75.0,
+    'Lavagem Carro Comum': 65.0,
+    'Lavagem Caminhonete': 95.0,
+    'Leva e Traz': 15.0,
   };
 
   String _serviceTitles = '';
@@ -359,24 +376,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _mainIcon = widget.services.first['icon'] ?? Icons.build;
     await _initializeDateFormatting();
 
-    // Se hoje já passou do último horário padrão, começa direto no próximo dia disponível.
-    final now = DateTime.now();
-    if (_isSameDay(_selectedDate, now)) {
-      final defaultSlotsToday = _getDefaultSlotsForDate(_selectedDate);
-      if (defaultSlotsToday.isNotEmpty) {
-        final last = defaultSlotsToday.last.split(':');
-        final lastSlotTime = DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          int.parse(last[0]),
-          int.parse(last[1]),
-        );
-        if (lastSlotTime.isBefore(now)) {
-          _selectedDate =
-              _getNextAvailableDate(now.add(const Duration(days: 1)));
-        }
-      }
+    // Garantir regra: nunca permitir que a data selecionada seja hoje ou anterior.
+    final minDate = _getMinBookingDate();
+    if (_selectedDate.isBefore(minDate)) {
+      _selectedDate = minDate;
     }
 
     await _generateTimeSlots();
@@ -789,6 +792,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       // Verificar se há conflito de horário
       for (var doc in appointmentsQuery.docs) {
+        // Se estamos reagendando, ignorar o próprio agendamento.
+        if (widget.rescheduleAppointmentId != null &&
+            doc.id == widget.rescheduleAppointmentId) {
+          continue;
+        }
+
         final data = doc.data();
         // Filtrar apenas agendamentos que realmente bloqueiam:
         // - confirmed: sempre
@@ -1070,6 +1079,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       final Map<String, String> bookedSlots = {};
       for (var doc in querySnapshot.docs) {
+        // Se estamos reagendando, não marcar o próprio agendamento como "ocupado"
+        // (permite selecionar o mesmo horário que já está pendente).
+        if (widget.rescheduleAppointmentId != null &&
+            doc.id == widget.rescheduleAppointmentId) {
+          continue;
+        }
+
         final data = doc.data();
         final status = data['status'] as String?;
 
@@ -1167,10 +1183,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   }
 
   Future<void> _selectDate(BuildContext context) async {
+    final minDate = _getMinBookingDate();
+    final safeInitial =
+        _selectedDate.isBefore(minDate) ? minDate : _selectedDate;
+
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _getNextAvailableDate(_selectedDate),
-      firstDate: _getNextAvailableDate(DateTime.now()),
+      initialDate: _getNextAvailableDate(safeInitial),
+      firstDate: minDate,
       lastDate: DateTime(2026, 12, 31),
       locale: const Locale('pt', 'BR'),
       builder: (context, child) {
@@ -1184,7 +1204,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         );
       },
       selectableDayPredicate: (date) {
-        // Retorna false para domingos e feriados nacionais
+        // Bloquear hoje e qualquer dia anterior; além disso bloquear domingo/feriado.
+        if (date.isBefore(minDate)) return false;
         return !_isHolidayOrSunday(date);
       },
     );
@@ -1235,10 +1256,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       int.parse(parts[0]),
       int.parse(parts[1]),
     );
-    if (selectedDateTime.isBefore(DateTime.now())) {
+    final minDate = _getMinBookingDate();
+    if (selectedDateTime.isBefore(minDate)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Selecione uma data/horário a partir de agora.'),
+        SnackBar(
+          content: Text(
+              'Selecione uma data/horário a partir de ${_dateFormat?.format(minDate) ?? 'amanhã'}.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -1309,9 +1332,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               builder: (context) => PaymentScreen(
                 amount: totalAmount,
                 serviceTitle: _serviceTitles,
-                serviceDescription: widget.services
-                    .map((s) => s['description'] as String)
-                    .join(', '),
+                serviceDescription: (widget.services
+                            .map((s) => (s['description'] as String?)?.trim())
+                            .whereType<String>()
+                            .where((d) => d.isNotEmpty)
+                            .join(', ')
+                            .trim())
+                        .isNotEmpty
+                    ? widget.services
+                        .map((s) => (s['description'] as String?)?.trim())
+                        .whereType<String>()
+                        .where((d) => d.isNotEmpty)
+                        .join(', ')
+                    : _serviceTitles,
                 carId: _selectedCar!['id'],
                 carModel: _selectedCar!['model'],
                 carPlate: _selectedCar!['plate'],
@@ -1695,9 +1728,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               builder: (context) => PaymentScreen(
                 amount: remainingAmount,
                 serviceTitle: _serviceTitles,
-                serviceDescription: widget.services
-                    .map((s) => s['description'] as String)
-                    .join(', '),
+                serviceDescription: (widget.services
+                            .map((s) => (s['description'] as String?)?.trim())
+                            .whereType<String>()
+                            .where((d) => d.isNotEmpty)
+                            .join(', ')
+                            .trim())
+                        .isNotEmpty
+                    ? widget.services
+                        .map((s) => (s['description'] as String?)?.trim())
+                        .whereType<String>()
+                        .where((d) => d.isNotEmpty)
+                        .join(', ')
+                    : _serviceTitles,
                 carId: _selectedCar!['id'],
                 carModel: _selectedCar!['model'],
                 carPlate: _selectedCar!['plate'],
@@ -1800,9 +1843,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         int.parse(timeParts[1]),
       );
 
-      // Garantia no backend-side do app: não salvar agendamento no passado.
-      if (dateTime.isBefore(DateTime.now())) {
-        throw ('Data/horário inválido: selecione um horário a partir de agora.');
+      // Garantia no backend-side do app: não salvar agendamento antes da data mínima.
+      final minDate = _getMinBookingDate();
+      if (dateTime.isBefore(minDate)) {
+        throw ('Data/horário inválido: selecione a partir de '
+            '${_dateFormat?.format(minDate) ?? 'amanhã'}.');
       }
 
       // Verificar se o usuário já tem agendamentos pendentes
@@ -1906,9 +1951,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               builder: (context) => PaymentScreen(
                 amount: totalAmount,
                 serviceTitle: _serviceTitles,
-                serviceDescription: widget.services
-                    .map((s) => s['description'] as String)
-                    .join(', '),
+                serviceDescription: (widget.services
+                            .map((s) => (s['description'] as String?)?.trim())
+                            .whereType<String>()
+                            .where((d) => d.isNotEmpty)
+                            .join(', ')
+                            .trim())
+                        .isNotEmpty
+                    ? widget.services
+                        .map((s) => (s['description'] as String?)?.trim())
+                        .whereType<String>()
+                        .where((d) => d.isNotEmpty)
+                        .join(', ')
+                    : _serviceTitles,
                 carId: _selectedCar!['id'],
                 carModel: _selectedCar!['model'],
                 carPlate: _selectedCar!['plate'],

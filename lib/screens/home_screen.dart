@@ -393,7 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const ServiceHistoryScreen(),
+                      builder: (context) =>
+                          ServiceHistoryScreen(authService: widget.authService),
                     ),
                   );
                 },

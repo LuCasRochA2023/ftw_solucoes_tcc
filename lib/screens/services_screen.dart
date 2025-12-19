@@ -17,6 +17,20 @@ class _ServicesScreenState extends State<ServicesScreen> {
   bool _isLoading = false;
   List<Map<String, dynamic>> _services = [];
 
+  // Preços atuais (fixos). Serviços "Preço a combinar" continuam vindo do histórico.
+  static const Map<String, double> _currentFixedPrices = {
+    'Lavagem SUV': 75.0,
+    'Lavagem Carro Comum': 65.0,
+    'Lavagem Caminhonete': 95.0,
+    'Leva e Traz': 20.0,
+  };
+
+  double? _getCurrentFixedPrice(Map<String, dynamic> service) {
+    final title = service['title'] as String?;
+    if (title == null) return null;
+    return _currentFixedPrices[title];
+  }
+
   @override
   void initState() {
     super.initState();
@@ -43,14 +57,14 @@ class _ServicesScreenState extends State<ServicesScreen> {
             'title': 'Lavagem Carro Comum',
             'description': 'Lavagem completa externa e interna',
             'date': DateTime.now(),
-            'value': 50.0,
+            'value': 65.0,
             'status': 'concluído',
           },
           {
             'title': 'Polimento',
             'description': 'Polimento e aplicação de cera',
             'date': DateTime.now().subtract(const Duration(days: 1)),
-            'value': 120.0,
+            'value': null, // Preço a combinar
             'status': 'em andamento',
           },
         ];
@@ -184,7 +198,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                                 ),
                               ),
                               Text(
-                                'Valor: R\$ ${_formatValue(service['value'])}',
+                                'Valor: ${_formatDisplayPrice(service)}',
                                 style: GoogleFonts.poppins(
                                   color: Theme.of(context).primaryColor,
                                   fontWeight: FontWeight.bold,
@@ -215,5 +229,16 @@ class _ServicesScreenState extends State<ServicesScreen> {
       return value.toStringAsFixed(2).replaceAll('.', ',');
     }
     return value.toString();
+  }
+
+  String _formatDisplayPrice(Map<String, dynamic> service) {
+    final fixed = _getCurrentFixedPrice(service);
+    if (fixed != null) {
+      return 'R\$ ${fixed.toStringAsFixed(2).replaceAll('.', ',')}';
+    }
+
+    final value = service['value'];
+    if (value == null) return 'Preço a combinar';
+    return 'R\$ ${_formatValue(value)}';
   }
 }

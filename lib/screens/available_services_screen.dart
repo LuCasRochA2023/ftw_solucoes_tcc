@@ -191,7 +191,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             'Lavagem completa externa e interna com produtos premium',
         'icon': Icons.directions_car,
         'color': Colors.lightBlue,
-        'price': 'R\$ 80,00',
+        'price': 'R\$ 75,00',
       },
       {
         'title': 'Lavagem Carro Comum',
@@ -199,7 +199,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 70,00',
+        'price': 'R\$ 65,00',
       },
       {
         'title': 'Lavagem Caminhonete',
@@ -207,7 +207,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem especializada para veículos grandes',
         'icon': Icons.local_shipping,
         'color': Colors.lightBlue,
-        'price': 'R\$ 100,00',
+        'price': 'R\$ 95,00',
       },
       {
         'title': 'Leva e Traz',
@@ -215,7 +215,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Busca, lavagem e entrega do veículo',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 20,00',
+        'price': 'R\$ 15,00',
       },
     ];
 
@@ -610,7 +610,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             'Lavagem completa externa e interna com produtos premium',
         'icon': Icons.directions_car,
         'color': Colors.lightBlue,
-        'price': 'R\$ 80,00',
+        'price': 'R\$ 75,00',
       },
       {
         'title': 'Lavagem Carro Comum',
@@ -618,7 +618,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 70,00',
+        'price': 'R\$ 65,00',
       },
       {
         'title': 'Lavagem Caminhonete',
@@ -626,7 +626,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem especializada para veículos grandes',
         'icon': Icons.local_shipping,
         'color': Colors.lightBlue,
-        'price': 'R\$ 100,00',
+        'price': 'R\$ 95,00',
       },
       {
         'title': 'Leva e Traz',

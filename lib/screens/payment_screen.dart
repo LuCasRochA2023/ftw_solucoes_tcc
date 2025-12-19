@@ -12,6 +12,8 @@ import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../utils/backend_url.dart';
 import '../utils/environment_config.dart';
+import '../utils/mp_device_session/mp_device_session.dart';
+import '../utils/mp_device_session/mp_device_session_mobile.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -48,6 +50,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   int _selectedTab = 0; // 0 = Pix, 1 = Cartão
   bool _isInitialized = false; // Flag para evitar inicialização duplicada
   bool _isDisposed = false; // Flag para controlar se a tela foi descartada
+  bool _walletDebitProcessed = false; // Evita debitar saldo 2x no mesmo fluxo
 
   // Campos do formulário de cartão
   final _cardNumberController = TextEditingController();
@@ -59,6 +62,190 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _cardError;
   String? _cardSuccess;
   String? _userCpf;
+
+  String _onlyDigits(String s) => s.replaceAll(RegExp(r'\D'), '');
+
+  bool _isValidLuhn(String digits) {
+    int sum = 0;
+    bool alternate = false;
+    for (int i = digits.length - 1; i >= 0; i--) {
+      int n = int.tryParse(digits[i]) ?? 0;
+      if (alternate) {
+        n *= 2;
+        if (n > 9) n -= 9;
+      }
+      sum += n;
+      alternate = !alternate;
+    }
+    return sum % 10 == 0;
+  }
+
+  String? _validateCardNumber(String? v) {
+    final raw = (v ?? '').trim();
+    if (raw.isEmpty) return 'Informe o número do cartão';
+    final digits = _onlyDigits(raw);
+    if (digits.length < 13 || digits.length > 19)
+      return 'Número do cartão inválido';
+    if (RegExp(r'^(\d)\1+$').hasMatch(digits))
+      return 'Número do cartão inválido';
+    if (!_isValidLuhn(digits)) return 'Número do cartão inválido';
+    return null;
+  }
+
+  String? _validateExpiry(String? v) {
+    final raw = (v ?? '').trim();
+    if (raw.isEmpty) return 'Informe a validade (MM/AA)';
+    if (!RegExp(r'^\d{2}/\d{2}$').hasMatch(raw))
+      return 'Validade inválida (use MM/AA)';
+    final parts = raw.split('/');
+    final month = int.tryParse(parts[0]);
+    final year2 = int.tryParse(parts[1]);
+    if (month == null || year2 == null) return 'Validade inválida';
+    if (month < 1 || month > 12) return 'Mês inválido';
+    final year = 2000 + year2;
+    final now = DateTime.now();
+    final lastMomentOfMonth =
+        DateTime(year, month + 1, 1).subtract(const Duration(milliseconds: 1));
+    if (lastMomentOfMonth.isBefore(now)) return 'Cartão vencido';
+    return null;
+  }
+
+  String? _validateCvv(String? v) {
+    final raw = (v ?? '').trim();
+    if (raw.isEmpty) return 'Informe o CVV';
+    final digits = _onlyDigits(raw);
+    if (digits.length < 3 || digits.length > 4) return 'CVV inválido';
+    return null;
+  }
+
+  String? _validateCardholderName(String? v) {
+    final name = (v ?? '').trim();
+    if (name.isEmpty) return 'Informe o nome do titular';
+    if (name.length < 3) return 'Nome do titular inválido';
+    final parts =
+        name.split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.length < 2) return 'Informe nome e sobrenome';
+    return null;
+  }
+
+  String _friendlyMpTokenizationError(
+      int statusCode, Map<String, dynamic>? data) {
+    final msg = (data?['message'] as String?) ?? '';
+    if (statusCode == 404 && msg.contains('not found public_key')) {
+      return 'Configuração do Mercado Pago inválida (public key). Verifique o arquivo .env.';
+    }
+    if (statusCode == 400) {
+      return 'Dados do cartão inválidos. Verifique número, validade e CVV.';
+    }
+    return 'Não foi possível validar o cartão. Tente novamente.';
+  }
+
+  String _friendlyMpRejection(String? statusDetail) {
+    switch (statusDetail) {
+      case 'cc_rejected_bad_filled_card_number':
+        return 'Número do cartão inválido. Verifique e tente novamente.';
+      case 'cc_rejected_bad_filled_date':
+        return 'Validade inválida. Verifique mês/ano do cartão.';
+      case 'cc_rejected_bad_filled_security_code':
+        return 'CVV inválido. Verifique o código de segurança.';
+      case 'cc_rejected_other_reason':
+        return 'Pagamento recusado. Tente outro cartão ou contate o banco.';
+      case 'cc_rejected_insufficient_amount':
+        return 'Pagamento recusado por saldo insuficiente no cartão.';
+      case 'cc_rejected_call_for_authorize':
+        return 'Pagamento recusado. Entre em contato com o banco para autorizar.';
+      case 'cc_rejected_high_risk':
+        return 'Pagamento recusado por segurança. Tente outro cartão.';
+      case 'cc_rejected_max_attempts':
+        return 'Muitas tentativas. Aguarde um pouco e tente novamente.';
+      case 'cc_rejected_blacklist':
+        return 'Pagamento recusado. Tente outro cartão.';
+      case 'cc_rejected_card_disabled':
+        return 'Cartão desabilitado. Verifique com o banco.';
+      case 'cc_rejected_card_error':
+        return 'Erro no cartão. Verifique os dados ou tente outro cartão.';
+      case 'cc_rejected_duplicated_payment':
+        return 'Pagamento duplicado detectado. Verifique se já foi cobrado.';
+      default:
+        return 'Pagamento recusado. Verifique os dados ou tente outro cartão.';
+    }
+  }
+
+  String _getItemCategoryId() {
+    // Formato esperado no backend/MP (conforme exemplo do usuário)
+    return 'services';
+  }
+
+  String _buildItemId() {
+    // Ex.: "lavagem_001"
+    final t = widget.serviceTitle.toLowerCase();
+    if (t.contains('lavagem') && t.contains('carro comum'))
+      return 'lavagem_001';
+    if (t.contains('lavagem') && t.contains('suv')) return 'lavagem_002';
+    if (t.contains('lavagem') && t.contains('caminhonete'))
+      return 'lavagem_003';
+    if (t.contains('leva') && t.contains('traz')) return 'leva_traz_001';
+
+    // Fallback (nunca vazio)
+    if (widget.appointmentId.isNotEmpty) return widget.appointmentId;
+    return 'service_item';
+  }
+
+  List<Map<String, dynamic>> _buildPaymentItems() {
+    // Formato EXATO solicitado:
+    // "items":[{"id":"lavagem_001","title":"...","description":"...","category_id":"services","quantity":1,"unit_price":70.0}]
+    final totalServicePrice = widget.amount + (widget.balanceToUse ?? 0.0);
+    return [
+      {
+        'id': _buildItemId(),
+        'title': widget.serviceTitle,
+        'description': widget.serviceDescription,
+        'category_id': _getItemCategoryId(),
+        'quantity': 1,
+        'unit_price': totalServicePrice,
+      }
+    ];
+  }
+
+  String _buildExternalReference() {
+    // ID interno para correlação (ex.: "agendamento_98765")
+    final id = widget.appointmentId.trim();
+    if (id.isEmpty) return 'agendamento_desconhecido';
+    if (id.startsWith('agendamento_')) return id;
+    return 'agendamento_$id';
+  }
+
+  String? _getDeviceSessionId() {
+    try {
+      return getMpDeviceSessionId();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _deviceSessionIdMobile;
+
+  Future<void> _ensureDeviceSessionIdMobile() async {
+    // No Web, já pegamos direto via JS context (MP_DEVICE_SESSION_ID).
+    final webId = _getDeviceSessionId();
+    if (webId != null) return;
+
+    if (_deviceSessionIdMobile != null && _deviceSessionIdMobile!.isNotEmpty) {
+      return;
+    }
+
+    final v = await MpDeviceSessionMobile.instance.getOrCreate();
+    if (!mounted) return;
+    if (v != null && v.trim().isNotEmpty) {
+      setState(() {
+        _deviceSessionIdMobile = v.trim();
+      });
+    }
+  }
+
+  String? _effectiveDeviceSessionId() {
+    return _getDeviceSessionId() ?? _deviceSessionIdMobile;
+  }
 
   // Função para copiar QR code para área de transferência
   Future<void> _copyQrCodeToClipboard() async {
@@ -81,6 +268,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.initState();
     debugPrint('=== DEBUG: PaymentScreen initState ===');
     // Inicializar imediatamente sem delay
+    // Gera MP_DEVICE_SESSION_ID no mobile via WebView invisível (requisito do MP).
+    unawaited(_ensureDeviceSessionIdMobile());
     _initializePayment();
   }
 
@@ -93,29 +282,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     debugPrint('=== DEBUG: Inicializando pagamento ===');
     _isInitialized = true;
 
-    // Se há saldo para usar, processar o pagamento com saldo primeiro
-    if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
-      debugPrint('=== DEBUG: Processando pagamento com saldo ===');
-      await _processBalancePayment();
-
-      // Se o valor restante é 0, navegar para sucesso
-      if (widget.amount <= 0) {
-        if (mounted && !_isDisposed) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(
-              builder: (context) => HomeScreen(authService: AuthService()),
-              settings: const RouteSettings(arguments: 'pagamento_sucesso'),
-            ),
-            (route) => false,
-          );
-        }
-        return;
-      }
-      // Se há valor restante, continuar para criar pagamento PIX
-      debugPrint(
-          '=== DEBUG: Há valor restante para pagar: R\$ ${widget.amount.toStringAsFixed(2)} ===');
-    }
+    // IMPORTANTE:
+    // Se o usuário escolheu usar saldo (balanceToUse) junto com PIX/Cartão,
+    // não podemos debitar o saldo aqui — só após o pagamento ser aprovado.
 
     // Primeiro carregar o CPF, depois criar o pagamento
     await _loadUserCpf();
@@ -239,14 +408,36 @@ class _PaymentScreenState extends State<PaymentScreen> {
         debugPrint('Dica: Atualize seu perfil para usar seu CPF real');
       }
 
+      final deviceSessionId = _effectiveDeviceSessionId();
       final headers = {
         'Content-Type': 'application/json',
         'x-idempotency-key': const Uuid().v4(),
+        if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
       };
 
+      final items = _buildPaymentItems();
+      final notificationUrl = EnvironmentConfig.mpNotificationUrlValue;
+      final externalReference = _buildExternalReference();
       final requestBody = {
         'amount': widget.amount,
         'description': widget.serviceDescription,
+        'paymentMethod': 'pix',
+        // Itens do pedido (nome, código, categoria, descrição, preço)
+        'items': items,
+        // Alguns backends/MP usam additional_info.items
+        'additional_info': {'items': items},
+        if (notificationUrl != null) 'notificationUrl': notificationUrl,
+        if (deviceSessionId != null) 'deviceId': deviceSessionId,
+        // Ajuda conciliar pagamento/agendamento (camelCase conforme backend)
+        'externalReference': externalReference,
+        // Mantém compatibilidade caso o backend/MP espere snake_case
+        'external_reference': externalReference,
+        'metadata': {
+          'appointmentId': widget.appointmentId,
+          'carId': widget.carId,
+          'carModel': widget.carModel,
+          'carPlate': widget.carPlate,
+        },
         'payer': {
           'email': userEmail,
           'firstName': userFirstName,
@@ -505,10 +696,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<String?> _consultarStatusPagamento() async {
     if (_paymentId == null) return null;
     try {
+      final deviceSessionId = _effectiveDeviceSessionId();
       final response = await http.get(
         Uri.parse('${BackendUrl.baseUrl}/payment-status/$_paymentId'),
         headers: {
           'x-idempotency-key': const Uuid().v4(),
+          if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
         },
       );
       if (response.statusCode == 200) {
@@ -532,8 +725,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
 
     try {
-      // O pagamento com saldo já foi processado na inicialização
-      // Aqui apenas processamos o pagamento PIX/Cartão que foi confirmado
+      // Se houver saldo a usar (pagamento misto), debitar SOMENTE agora (pagamento aprovado).
+      await _debitWalletBalanceIfNeeded();
 
       // Salvar informações do pagamento para possível devolução futura
       await _savePaymentInfo();
@@ -561,6 +754,56 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  Future<void> _debitWalletBalanceIfNeeded() async {
+    if (_walletDebitProcessed) return;
+    final walletToUse = widget.balanceToUse ?? 0.0;
+    if (walletToUse <= 0) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw ('Usuário não autenticado');
+
+    // Idempotência entre telas/dispositivos: marca no appointment que o débito do saldo já foi feito.
+    final appointmentRef = FirebaseFirestore.instance
+        .collection('appointments')
+        .doc(widget.appointmentId);
+    final userRef =
+        FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final transactionsRef =
+        FirebaseFirestore.instance.collection('transactions');
+
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final appointmentDoc = await tx.get(appointmentRef);
+      final alreadyDebited = appointmentDoc.data()?['walletDebitedAt'] != null;
+      if (alreadyDebited) return;
+
+      final userDoc = await tx.get(userRef);
+      final currentBalance = (userDoc.data()?['balance'] ?? 0.0).toDouble();
+      final finalBalance = currentBalance - walletToUse;
+      if (finalBalance < 0) {
+        throw ('Saldo insuficiente para completar o pagamento.');
+      }
+
+      tx.update(userRef, {'balance': finalBalance});
+
+      final transactionDoc = transactionsRef.doc();
+      tx.set(transactionDoc, {
+        'userId': user.uid,
+        'amount': walletToUse,
+        'type': 'debit',
+        'description': 'Pagamento (saldo) - ${widget.serviceTitle}',
+        'appointmentId': widget.appointmentId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      tx.update(appointmentRef, {
+        'walletDebitedAt': FieldValue.serverTimestamp(),
+        'walletDebitedAmount': walletToUse,
+      });
+    });
+
+    _walletDebitProcessed = true;
+  }
+
   Future<void> _savePaymentInfo() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -570,15 +813,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       String paymentMethod;
       bool canRefund;
 
-      if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
-        // Pagamento com saldo da carteira
-        paymentMethod = 'wallet_balance';
-        canRefund = true; // Saldo da carteira sempre pode ser devolvido
-      } else {
-        // Pagamento com PIX ou Cartão
-        paymentMethod = _selectedTab == 0 ? 'pix' : 'credit_card';
-        canRefund = _selectedTab == 0 || _selectedTab == 1; // PIX ou Cartão
-      }
+      // Mesmo usando saldo, aqui registramos o método do "restante" (PIX/Cartão).
+      // O valor usado do saldo fica em balanceUsed.
+      paymentMethod = _selectedTab == 0 ? 'pix' : 'credit_card';
+      canRefund = true;
 
       // Salvar informações do pagamento para devolução futura
       await FirebaseFirestore.instance.collection('payments').add({
@@ -586,6 +824,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'appointmentId': widget.appointmentId,
         'amount': widget.amount,
         'paymentMethod': paymentMethod,
+        'isMixedPayment': (widget.balanceToUse ?? 0.0) > 0,
         'serviceTitle': widget.serviceTitle,
         'serviceDescription': widget.serviceDescription,
         'carId': widget.carId,
@@ -604,52 +843,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint('BalanceUsed: ${widget.balanceToUse ?? 0.0}');
     } catch (e) {
       debugPrint('Erro ao salvar informações do pagamento: $e');
-    }
-  }
-
-  Future<void> _processBalancePayment() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw ('Usuário não autenticado');
-
-      final currentBalance = (await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .get())
-              .data()?['balance'] ??
-          0.0;
-
-      final finalBalance = currentBalance - widget.balanceToUse!;
-
-      // Atualizar saldo do usuário
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .update({'balance': finalBalance});
-
-      // Registrar transação de débito
-      await FirebaseFirestore.instance.collection('transactions').add({
-        'userId': user.uid,
-        'amount': widget.balanceToUse!,
-        'type': 'debit',
-        'description': 'Pagamento de agendamento - ${widget.serviceTitle}',
-        'appointmentId': widget.appointmentId,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      // Atualizar status do agendamento:
-      // - Confirmado somente se não houver valor restante
-      // - Mantém como pendente (ou parcial) caso ainda falte pagamento
-      final String statusUpdate = widget.amount <= 0 ? 'confirmed' : 'pending';
-      await FirebaseFirestore.instance
-          .collection('appointments')
-          .doc(widget.appointmentId)
-          .update({'status': statusUpdate});
-
-      // Salvar informações do pagamento para possível devolução futura
-      await _savePaymentInfo();
-    } catch (e) {
-      throw ('Erro ao processar pagamento com saldo: $e');
     }
   }
 
@@ -695,6 +888,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
       'https://api.mercadopago.com/v1/card_tokens?public_key=$mpPublicKey',
     );
 
+    // MP pode exigir "Identificador do dispositivo" já na tokenização.
+    // No Web vem do security.js; no mobile geramos via WebView invisível.
+    await _ensureDeviceSessionIdMobile();
+    final deviceSessionId = _effectiveDeviceSessionId();
+
     final cleanCpf = cpf.replaceAll(RegExp(r'[^\d]'), '');
     final cleanCard = cardNumber.replaceAll(' ', '');
 
@@ -730,12 +928,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
     debugPrint(
         '=== DEBUG: Enviando requisição para Mercado Pago (tokenização) ===');
     debugPrint('URL: $url');
-    debugPrint('Headers: ${jsonEncode({'Content-Type': 'application/json'})}');
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
+    };
+    debugPrint('Headers: ${jsonEncode(headers)}');
     debugPrint('Body: ${jsonEncode(requestBody)}');
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: headers,
       body: jsonEncode(requestBody),
     );
 
@@ -771,8 +973,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint('Token gerado com sucesso: $tokenId');
       return tokenId;
     } else {
-      final errorData = jsonDecode(response.body);
-      debugPrint('Erro ao gerar token: ${jsonEncode(errorData)}');
+      Map<String, dynamic>? errorData;
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          errorData = decoded;
+        }
+      } catch (_) {
+        errorData = null;
+      }
+      debugPrint(
+          'Erro ao gerar token: ${jsonEncode(errorData ?? response.body)}');
+      if (mounted) {
+        setState(() {
+          _cardError =
+              _friendlyMpTokenizationError(response.statusCode, errorData);
+        });
+      }
       return null;
     }
   }
@@ -782,9 +999,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint('=== DEBUG: Verificando status do pagamento ===');
       debugPrint('Payment ID: $paymentId');
 
+      final deviceSessionId = _effectiveDeviceSessionId();
       final response = await http.get(
         Uri.parse('${BackendUrl.baseUrl}/payment-status/$paymentId'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
+        },
       );
 
       if (response.statusCode == 200) {
@@ -1406,10 +1627,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           vertical: 18, horizontal: 16),
                       hintText: '1234 5678 9012 3456',
                     ),
-                    validator: (v) =>
-                        v == null || v.replaceAll(' ', '').length < 16
-                            ? 'Número inválido'
-                            : null,
+                    validator: _validateCardNumber,
                   ),
                   const SizedBox(height: 20),
                   Column(
@@ -1433,8 +1651,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               vertical: 18, horizontal: 16),
                           hintText: '12/25',
                         ),
-                        validator: (v) =>
-                            v == null || v.length < 5 ? 'Inválido' : null,
+                        validator: _validateExpiry,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -1455,8 +1672,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               vertical: 18, horizontal: 16),
                           hintText: '123',
                         ),
-                        validator: (v) =>
-                            v == null || v.length < 3 ? 'Inválido' : null,
+                        validator: _validateCvv,
                       ),
                     ],
                   ),
@@ -1473,8 +1689,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 18, horizontal: 16),
                     ),
-                    validator: (v) =>
-                        v == null || v.isEmpty ? 'Obrigatório' : null,
+                    validator: _validateCardholderName,
                   ),
                   const SizedBox(height: 20),
                   if (_userCpf != null && _userCpf!.isNotEmpty)
@@ -1693,10 +1908,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               debugPrint(
                                   '=== DEBUG: Chamando pagarComCartao ===');
                               await pagarComCartao(cardToken);
-                              setState(() {
-                                _cardSuccess =
-                                    'Pagamento realizado com sucesso!';
-                              });
                             } catch (e) {
                               setState(() {
                                 _cardError = 'Erro ao processar pagamento: $e';
@@ -1725,9 +1936,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     debugPrint('=== DEBUG: Iniciando pagamento com cartão ===');
     debugPrint('URL: ${BackendUrl.baseUrl}/create-creditcard-payment');
 
+    await _ensureDeviceSessionIdMobile();
+    final deviceSessionId = _effectiveDeviceSessionId();
     final headers = {
       'Content-Type': 'application/json',
       'x-idempotency-key': const Uuid().v4(),
+      if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
     };
     debugPrint('Headers: ${jsonEncode(headers)}');
 
@@ -1740,15 +1954,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       setState(() {
         _cardError =
             'CPF não encontrado no perfil. Por favor, atualize seu perfil.';
-        _isCardProcessing = false;
-      });
-      return;
-    }
-
-    if (cleanCpf == '03557007197') {
-      setState(() {
-        _cardError =
-            'CPF de teste detectado. Por favor, use seu CPF real no perfil.';
         _isCardProcessing = false;
       });
       return;
@@ -1779,10 +1984,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final user = FirebaseAuth.instance.currentUser;
     final userId = user?.uid ?? 'unknown';
 
+    final items = _buildPaymentItems();
+    final notificationUrl = EnvironmentConfig.mpNotificationUrlValue;
+    final externalReference = _buildExternalReference();
     final requestBody = {
       'amount': widget.amount,
       'paymentMethod': 'credit_card',
       'description': widget.serviceDescription,
+      // Itens do pedido (nome, código, categoria, descrição, preço)
+      'items': items,
+      'additional_info': {'items': items},
+      if (notificationUrl != null) 'notificationUrl': notificationUrl,
+      if (deviceSessionId != null) 'deviceId': deviceSessionId,
+      'externalReference': externalReference,
+      'external_reference': externalReference,
+      'metadata': {
+        'appointmentId': widget.appointmentId,
+        'carId': widget.carId,
+        'carModel': widget.carModel,
+        'carPlate': widget.carPlate,
+      },
       'payer': {
         'email': user?.email ?? 'email@gmail.com',
         'cpf': cleanCpf,
@@ -1844,12 +2065,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       if (status == 'approved') {
         debugPrint('Pagamento aprovado com sucesso!');
+        if (mounted) {
+          setState(() {
+            _cardError = null;
+            _cardSuccess = 'Pagamento realizado com sucesso!';
+          });
+        }
         await _onPaymentSuccess();
       } else if (status == 'in_process') {
         debugPrint('Pagamento em processamento');
         setState(() {
-          _cardError =
-              'Pagamento em processamento. Aguarde a confirmação. Status: $statusDetail';
+          _cardSuccess = null;
+          _cardError = 'Pagamento em processamento. Aguarde a confirmação.';
         });
         // Aguardar um pouco e verificar novamente
         if (paymentId != null) {
@@ -1859,12 +2086,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
       } else if (status == 'rejected') {
         debugPrint('Pagamento rejeitado');
         setState(() {
-          _cardError =
-              'Pagamento rejeitado. Verifique os dados do cartão. Status: $statusDetail';
+          _cardSuccess = null;
+          _cardError = _friendlyMpRejection(statusDetail);
         });
       } else {
         setState(() {
-          _cardError = 'Status inesperado: $status - $statusDetail';
+          _cardSuccess = null;
+          _cardError =
+              'Não foi possível concluir o pagamento. Tente novamente.';
         });
       }
     } else {

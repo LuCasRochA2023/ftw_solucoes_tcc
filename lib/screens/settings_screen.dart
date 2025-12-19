@@ -173,7 +173,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (context) => const ServiceHistoryScreen()),
+                          builder: (context) => ServiceHistoryScreen(
+                              authService: widget.authService)),
                     );
                   },
                 ),

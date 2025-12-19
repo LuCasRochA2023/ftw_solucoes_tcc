@@ -7,7 +7,12 @@ import 'schedule_service_screen.dart';
 import '../services/auth_service.dart';
 
 class ServiceHistoryScreen extends StatefulWidget {
-  const ServiceHistoryScreen({super.key});
+  final AuthService authService;
+
+  const ServiceHistoryScreen({
+    super.key,
+    required this.authService,
+  });
 
   @override
   State<ServiceHistoryScreen> createState() => _ServiceHistoryScreenState();
@@ -175,17 +180,46 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return;
       }
 
+      // Se já foi solicitada a confirmação, não permitir solicitar novamente
+      if (appointmentStatus == 'cancellation_requested') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content:
+                  Text('O cancelamento deste agendamento já foi solicitado.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
       debugPrint('=== DEBUG: Cancelando agendamento ===');
       debugPrint('ID do agendamento: ${appointment['id']}');
       debugPrint('Status atual: $appointmentStatus');
 
-      // Atualizar status do agendamento para cancelado
+      // Regra:
+      // - Se o agendamento estiver CONFIRMADO (pago), não marcar como "cancelled".
+      //   Em vez disso, marcar como "cancellation_requested" (solicitado cancelamento).
+      // - Para demais status (pending etc.), pode cancelar direto como "cancelled".
+      final bool isPaidConfirmed = appointmentStatus == 'confirmed';
+      final String newStatus =
+          isPaidConfirmed ? 'cancellation_requested' : 'cancelled';
+
+      final updateData = <String, dynamic>{
+        'status': newStatus,
+        if (isPaidConfirmed)
+          'cancellationRequestedAt': FieldValue.serverTimestamp()
+        else
+          'cancelledAt': FieldValue.serverTimestamp(),
+      };
+
       await _firestore
           .collection('appointments')
           .doc(appointment['id'])
-          .update({'status': 'cancelled'});
+          .update(updateData);
 
-      debugPrint('=== DEBUG: Status atualizado para "cancelled" ===');
+      debugPrint('=== DEBUG: Status atualizado para "$newStatus" ===');
 
       // Verificar se a atualização foi bem-sucedida
       final updatedDoc = await _firestore
@@ -195,56 +229,17 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       final updatedStatus = updatedDoc.data()?['status'];
       debugPrint('=== DEBUG: Status após atualização: $updatedStatus ===');
 
-      // Só devolver dinheiro se o agendamento estava confirmado
-      if (appointmentStatus == 'confirmed') {
-        final amount = appointment['amount'] as double?;
-
-        if (amount != null && amount > 0) {
-          // Adicionar saldo ao usuário
-          final userRef = _firestore.collection('users').doc(user.uid);
-
-          await _firestore.runTransaction((transaction) async {
-            final userDoc = await transaction.get(userRef);
-            final currentBalance =
-                (userDoc.data()?['balance'] ?? 0.0).toDouble();
-            final newBalance = currentBalance + amount;
-
-            transaction.update(userRef, {'balance': newBalance});
-
-            // Registrar transação
-            final transactionRef = _firestore.collection('transactions').doc();
-            transaction.set(transactionRef, {
-              'userId': user.uid,
-              'amount': amount,
-              'type': 'credit',
-              'description': 'Reembolso - Cancelamento de serviço',
-              'appointmentId': appointment['id'],
-              'createdAt': FieldValue.serverTimestamp(),
-            });
-          });
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'Serviço cancelado. R\$ ${amount.toStringAsFixed(2)} adicionado ao seu saldo.'),
-                backgroundColor: Colors.green,
-              ),
-            );
-          }
+      // Mensagem para o usuário
+      if (mounted) {
+        if (newStatus == 'cancellation_requested') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Solicitação de cancelamento enviada. Aguarde a confirmação.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
         } else {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Serviço cancelado com sucesso.'),
-                backgroundColor: Colors.blue,
-              ),
-            );
-          }
-        }
-      } else {
-        // Para agendamentos não confirmados (pending, no_payment, etc.)
-        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Agendamento cancelado com sucesso.'),
@@ -268,6 +263,59 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         );
       }
     }
+  }
+
+  List<Map<String, dynamic>> _buildServicesForReschedule(
+      Map<String, dynamic> appointment) {
+    final services = appointment['services'] as List?;
+    if (services != null && services.isNotEmpty) {
+      return services
+          .map((s) => {
+                'title': (s as Map<String, dynamic>)['title'] ?? 'Serviço',
+              })
+          .toList();
+    }
+    final legacy = appointment['service'] as String?;
+    if (legacy != null && legacy.isNotEmpty) {
+      return [
+        {'title': legacy}
+      ];
+    }
+    return const [];
+  }
+
+  Future<void> _rescheduleAppointment(Map<String, dynamic> appointment) async {
+    final appointmentId = appointment['id'] as String?;
+    if (appointmentId == null) return;
+
+    final services = _buildServicesForReschedule(appointment);
+    if (services.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Não foi possível reagendar: serviços não encontrados.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScheduleServiceScreen(
+          services: services,
+          authService: widget.authService,
+          rescheduleAppointmentId: appointmentId,
+        ),
+      ),
+    );
+
+    // Atualizar lista após voltar do reagendamento
+    await _loadAppointments();
   }
 
   /// Exclui um agendamento da lista (apenas para agendamentos concluídos ou cancelados)
@@ -529,6 +577,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return 'Confirmado';
       case 'completed':
         return 'Concluído';
+      case 'cancellation_requested':
+        return 'Solicitado cancelamento';
       case 'cancelled':
         return 'Cancelado';
       default:
@@ -544,6 +594,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
         return Colors.blue;
       case 'completed':
         return Colors.green;
+      case 'cancellation_requested':
+        return Colors.purple;
       case 'cancelled':
         return Colors.red;
       default:
@@ -716,6 +768,9 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                         case 'completed':
                           statusIcon = Icons.star;
                           break;
+                        case 'cancellation_requested':
+                          statusIcon = Icons.hourglass_top;
+                          break;
                         case 'cancelled':
                           statusIcon = Icons.cancel;
                           break;
@@ -866,9 +921,24 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      // Botão de reagendamento para agendamentos pendentes
+                                      if (status == 'pending')
+                                        TextButton.icon(
+                                          icon: const Icon(Icons.edit_calendar,
+                                              color: Colors.blue),
+                                          label: Text(
+                                            'Reagendar',
+                                            style: GoogleFonts.poppins(
+                                                color: Colors.blue),
+                                          ),
+                                          onPressed: () =>
+                                              _rescheduleAppointment(
+                                                  appointment),
+                                        ),
                                       // Botão de cancelamento para agendamentos ativos
                                       if (status != 'cancelled' &&
-                                          status != 'completed')
+                                          status != 'completed' &&
+                                          status != 'cancellation_requested')
                                         TextButton.icon(
                                           icon: const Icon(Icons.cancel,
                                               color: Colors.red),
@@ -881,14 +951,8 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
 
                                             // Mensagem específica para agendamentos confirmados
                                             if (status == 'confirmed') {
-                                              final amount =
-                                                  appointment['amount']
-                                                      as double?;
-                                              if (amount != null &&
-                                                  amount > 0) {
-                                                message =
-                                                    'Tem certeza que deseja cancelar este agendamento?\n\nR\$ ${amount.toStringAsFixed(2)} será devolvido para sua carteira.';
-                                              }
+                                              message =
+                                                  'Tem certeza que deseja cancelar este agendamento?\n\nO cancelamento será solicitado e ficará aguardando confirmação.';
                                             }
 
                                             final confirm =
