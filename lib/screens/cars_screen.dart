@@ -106,10 +106,7 @@ class _CarsScreenState extends State<CarsScreen> {
       }
 
       debugPrint('Usuário autenticado: ${user.uid}');
-      debugPrint('Nome: ${_nameController.text}');
-      debugPrint('Modelo: ${_modelController.text}');
-      debugPrint('Placa: ${_plateController.text}');
-      debugPrint('Cor: ${_colorController.text}');
+      debugPrint('Salvando carro (campos omitidos por privacidade)');
 
       String? photoUrl;
       if (_imageFile != null) {
@@ -131,7 +128,7 @@ class _CarsScreenState extends State<CarsScreen> {
         'createdAt': FieldValue.serverTimestamp(),
       };
 
-      debugPrint('Salvando no Firestore: $carData');
+      debugPrint('Salvando no Firestore (campos omitidos por privacidade)');
 
       await _firestore
           .collection('users')

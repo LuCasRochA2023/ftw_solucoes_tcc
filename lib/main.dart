@@ -10,7 +10,6 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -19,13 +18,9 @@ import 'services/auth_service.dart';
 
 Future<void> initializeFirebase() async {
   try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    // Usa as configurações nativas (google-services.json / GoogleService-Info.plist).
+    await Firebase.initializeApp();
 
-    // App Check: como você não quer registrar este app no Firebase App Check agora,
-    // deixamos App Check ativo somente em debug (provider debug).
-    // Em release, não ativamos App Check para não quebrar chamadas por falta de configuração.
     if (!kReleaseMode) {
       if (Platform.isAndroid) {
         await FirebaseAppCheck.instance.activate(
@@ -41,13 +36,6 @@ Future<void> initializeFirebase() async {
     debugPrint('Firebase inicializado com sucesso');
   } catch (e) {
     debugPrint('Erro ao inicializar Firebase: $e');
-
-    try {
-      await Firebase.initializeApp();
-      debugPrint('Firebase inicializado com configurações padrão');
-    } catch (e) {
-      debugPrint('Erro ao inicializar Firebase com configurações padrão: $e');
-    }
   }
 }
 

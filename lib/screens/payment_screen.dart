@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
@@ -68,6 +69,30 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _userCpf;
 
   String _onlyDigits(String s) => s.replaceAll(RegExp(r'\D'), '');
+
+  // Evita vazar dados sensíveis em logs.
+  void _log(String message) {
+    if (kDebugMode) debugPrint(message);
+  }
+
+  String _maskCpf(String? cpf) {
+    final d = _onlyDigits(cpf ?? '');
+    if (d.length < 11) return '***';
+    return '***.***.${d.substring(d.length - 3)}-**';
+  }
+
+  String _maskCard(String? cardNumber) {
+    final d = _onlyDigits(cardNumber ?? '');
+    if (d.length < 8) return '****';
+    return '${d.substring(0, 4)} **** **** ${d.substring(d.length - 4)}';
+  }
+
+  String _maskToken(String? token) {
+    final t = (token ?? '').trim();
+    if (t.isEmpty) return '<empty>';
+    if (t.length <= 8) return '***';
+    return '${t.substring(0, 4)}***${t.substring(t.length - 4)}';
+  }
 
   bool _isValidLuhn(String digits) {
     int sum = 0;
@@ -308,7 +333,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _loadUserCpf() async {
-    debugPrint('=== DEBUG: Carregando CPF do usuário ===');
+    _log('=== DEBUG: Carregando CPF do usuário ===');
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -330,11 +355,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             setState(() {
               _userCpf = cpf;
             });
-            debugPrint('CPF carregado do perfil: $cpf');
-            debugPrint('CPF limpo: ${cpf.replaceAll(RegExp(r'[^\d]'), '')}');
-            debugPrint('CPF armazenado em _userCpf: $_userCpf');
+            _log('CPF carregado do perfil: ${_maskCpf(cpf)}');
           } else {
-            debugPrint('CPF não encontrado no perfil do usuário');
+            _log('CPF não encontrado no perfil do usuário');
             setState(() {
               _userCpf = null;
             });
@@ -352,7 +375,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Erro ao carregar CPF do usuário: $e');
+      _log('Erro ao carregar CPF do usuário: $e');
       setState(() {
         _userCpf = null;
       });
@@ -378,7 +401,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint(
           'EnvironmentConfig.activeBackendUrl: ${EnvironmentConfig.activeBackendUrl}');
       debugPrint('URL completa: ${BackendUrl.baseUrl}/create-payment');
-      debugPrint('CPF atual: $_userCpf');
+      _log('CPF atual: ${_maskCpf(_userCpf)}');
 
       // Usar dados do usuário logado se disponível
       final user = FirebaseAuth.instance.currentUser;
@@ -401,15 +424,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final cleanCpf = _userCpf!.replaceAll(RegExp(r'[^\d]'), '');
         if (cleanCpf.length == 11) {
           userCpf = cleanCpf;
-          debugPrint('Usando CPF do perfil: $userCpf');
+          _log('Usando CPF do perfil: ${_maskCpf(userCpf)}');
         } else {
-          debugPrint('CPF do perfil inválido: $_userCpf (limpo: $cleanCpf)');
-          debugPrint('Usando CPF de teste: $userCpf');
+          _log('CPF do perfil inválido. Usando CPF de fallback.');
         }
       } else {
         debugPrint(
             'CPF não encontrado no perfil, usando CPF de teste: $userCpf');
-        debugPrint('Dica: Atualize seu perfil para usar seu CPF real');
+        _log('Dica: Atualize seu perfil para usar seu CPF real');
       }
 
       final deviceSessionId = _effectiveDeviceSessionId();
@@ -430,7 +452,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         'items': items,
         // Alguns backends/MP usam additional_info.items
         'additional_info': {'items': items},
-        if (notificationUrl != null) 'notificationUrl': notificationUrl,
+        if (notificationUrl.isNotEmpty) 'notificationUrl': notificationUrl,
         if (deviceSessionId != null) 'deviceId': deviceSessionId,
         // Ajuda conciliar pagamento/agendamento (camelCase conforme backend)
         'externalReference': externalReference,
@@ -449,12 +471,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
           'cpf': userCpf,
         }
       };
-      debugPrint('Body: ${jsonEncode(requestBody)}');
+      _log('Enviando requisição de pagamento (PIX).');
 
       debugPrint('=== DEBUG: Enviando requisição para o backend ===');
       debugPrint('URL final: ${BackendUrl.baseUrl}/create-payment');
       debugPrint('Headers: $headers');
-      debugPrint('Body: ${jsonEncode(requestBody)}');
+      _log('Enviando requisição de pagamento (PIX).');
 
       final response = await http
           .post(
@@ -467,7 +489,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       debugPrint('=== DEBUG: Resposta recebida ===');
       debugPrint('Status Code: ${response.statusCode}');
       debugPrint('Response Headers: ${response.headers}');
-      debugPrint('Response Body: ${response.body}');
+      _log('Resposta PIX recebida (status=${response.statusCode}).');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -873,7 +895,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
       return cpf;
     } catch (e) {
-      debugPrint('Erro ao formatar CPF: $e');
+      _log('Erro ao formatar CPF: $e');
       return cpf;
     }
   }
@@ -886,7 +908,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String cardholderName,
     required String cpf,
   }) async {
-    debugPrint('=== DEBUG: Gerando token do cartão ===');
+    _log('=== DEBUG: Gerando token do cartão ===');
 
     final url = Uri.parse(
       'https://api.mercadopago.com/v1/card_tokens?public_key=$mpPublicKey',
@@ -901,15 +923,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final cleanCard = cardNumber.replaceAll(' ', '');
 
     if (cleanCpf.isEmpty) {
-      debugPrint('Erro: CPF não fornecido para tokenização');
+      _log('Erro: CPF não fornecido para tokenização');
       return null;
     }
 
-    debugPrint('CPF para tokenização: $cleanCpf');
-    debugPrint('Nome do titular: $cardholderName');
-    debugPrint(
-        'Número do cartão: ${cleanCard.substring(0, 4)}...${cleanCard.substring(cleanCard.length - 4)}');
-    debugPrint('Validade: $expirationMonth/$expirationYear');
+    _log('CPF para tokenização: ${_maskCpf(cleanCpf)}');
+    _log('Nome do titular: (omitido)');
+    _log('Número do cartão: ${_maskCard(cleanCard)}');
+    _log('Validade: **/**');
 
     final requestBody = {
       'card_number': cleanCard,
@@ -927,17 +948,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       },
     };
 
-    debugPrint('Request Body para tokenização: ${jsonEncode(requestBody)}');
-
-    debugPrint(
-        '=== DEBUG: Enviando requisição para Mercado Pago (tokenização) ===');
-    debugPrint('URL: $url');
+    _log('=== DEBUG: Enviando requisição para Mercado Pago (tokenização) ===');
     final headers = <String, String>{
       'Content-Type': 'application/json',
       if (deviceSessionId != null) 'x-meli-session-id': deviceSessionId,
     };
-    debugPrint('Headers: ${jsonEncode(headers)}');
-    debugPrint('Body: ${jsonEncode(requestBody)}');
+    _log('Headers: ${jsonEncode({'Content-Type': 'application/json', 'x-meli-session-id': deviceSessionId != null ? '<present>' : '<absent>'})}');
 
     final response = await http.post(
       url,
@@ -945,10 +961,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: jsonEncode(requestBody),
     );
 
-    debugPrint('=== DEBUG: Resposta da tokenização ===');
-    debugPrint('Status Code: ${response.statusCode}');
-    debugPrint('Response Headers: ${response.headers}');
-    debugPrint('Response Body: ${response.body}');
+    _log('=== DEBUG: Resposta da tokenização (status=${response.statusCode}) ===');
 
     if (response.statusCode == 201) {
       final data = jsonDecode(response.body);
@@ -965,16 +978,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
           } else if (id is double) {
             tokenId = id.toInt().toString();
           } else {
-            debugPrint('Tipo inesperado para ID do token: ${id.runtimeType}');
+            _log('Tipo inesperado para ID do token: ${id.runtimeType}');
             tokenId = null;
           }
         }
       } catch (e) {
-        debugPrint('Erro ao extrair ID do token: $e');
+        _log('Erro ao extrair ID do token: $e');
         tokenId = null;
       }
 
-      debugPrint('Token gerado com sucesso: $tokenId');
+      _log('Token gerado com sucesso: ${_maskToken(tokenId)}');
       return tokenId;
     } else {
       Map<String, dynamic>? errorData;
@@ -986,8 +999,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       } catch (_) {
         errorData = null;
       }
-      debugPrint(
-          'Erro ao gerar token: ${jsonEncode(errorData ?? response.body)}');
+      _log('Erro ao gerar token (status=${response.statusCode})');
       if (mounted) {
         setState(() {
           _cardError =
@@ -1818,11 +1830,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             '=== DEBUG: Botão de pagamento pressionado ===');
                         debugPrint(
                             'Formulário válido: ${_formKey.currentState?.validate() ?? false}');
-                        debugPrint('CPF carregado: $_userCpf');
+                        _log('CPF carregado: ${_maskCpf(_userCpf)}');
                         debugPrint('Nome: ${_nameController.text}');
-                        debugPrint('Cartão: ${_cardNumberController.text}');
+                        _log('Cartão: ${_maskCard(_cardNumberController.text)}');
                         debugPrint('Validade: ${_expiryController.text}');
-                        debugPrint('CVV: ${_cvvController.text}');
+                        _log('CVV: (omitido)');
 
                         debugPrint(
                             '=== DEBUG: Verificando validação do formulário ===');
@@ -1832,13 +1844,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
                         if (isValid) {
                           // Verificar se o CPF foi carregado
-                          debugPrint('=== DEBUG: Verificando CPF ===');
-                          debugPrint('CPF atual: $_userCpf');
+                          _log('=== DEBUG: Verificando CPF ===');
+                          _log('CPF atual: ${_maskCpf(_userCpf)}');
                           if (_userCpf == null || _userCpf!.isEmpty) {
                             debugPrint(
                                 'CPF não carregado, tentando carregar novamente...');
                             await _loadUserCpf();
-                            debugPrint('CPF após recarregar: $_userCpf');
+                            _log('CPF após recarregar: ${_maskCpf(_userCpf)}');
                             if (_userCpf == null || _userCpf!.isEmpty) {
                               setState(() {
                                 _cardError =
@@ -1851,9 +1863,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           debugPrint(
                               '=== DEBUG: Verificando campos do formulário ===');
                           debugPrint('Nome: "${_nameController.text}"');
-                          debugPrint('Cartão: "${_cardNumberController.text}"');
+                          _log('Cartão: ${_maskCard(_cardNumberController.text)}');
                           debugPrint('Validade: "${_expiryController.text}"');
-                          debugPrint('CVV: "${_cvvController.text}"');
+                          _log('CVV: (omitido)');
 
                           setState(() {
                             _isCardProcessing = true;
@@ -1885,15 +1897,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             });
                             return;
                           }
-                          debugPrint('CPF antes da tokenização: $_userCpf');
+                          _log('CPF antes da tokenização: ${_maskCpf(_userCpf)}');
                           debugPrint(
                               'CPF está vazio? ${_userCpf == null || _userCpf!.isEmpty}');
                           debugPrint(
                               'CPF é o de teste? ${_userCpf == '03557007197'}');
                           debugPrint(
                               'CPF limpo: ${_userCpf?.replaceAll(RegExp(r'[^\d]'), '')}');
-                          debugPrint('=== DEBUG: Antes de gerar token ===');
-                          debugPrint('CPF para tokenização: $_userCpf');
+                          _log('=== DEBUG: Antes de gerar token ===');
+                          _log('CPF para tokenização: ${_maskCpf(_userCpf)}');
                           debugPrint(
                               'Nome do titular: ${_nameController.text}');
                           debugPrint(
@@ -1908,7 +1920,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             cardholderName: _nameController.text,
                             cpf: _userCpf!, // Usar CPF do usuário
                           );
-                          debugPrint('=== DEBUG: Token gerado: $cardToken ===');
+                          _log('=== DEBUG: Token gerado: ${_maskToken(cardToken)} ===');
                           if (cardToken != null) {
                             try {
                               debugPrint(
@@ -1939,8 +1951,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> pagarComCartao(String cardToken) async {
-    debugPrint('=== DEBUG: Iniciando pagamento com cartão ===');
-    debugPrint('URL: ${BackendUrl.baseUrl}/create-creditcard-payment');
+    _log('=== DEBUG: Iniciando pagamento com cartão ===');
 
     await _ensureDeviceSessionIdMobile();
     final deviceSessionId = _effectiveDeviceSessionId();
@@ -1953,8 +1964,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     // Usar CPF do usuário carregado do perfil
     final cleanCpf = _userCpf?.replaceAll(RegExp(r'[^\d]'), '') ?? '';
-    debugPrint('CPF para pagamento: $cleanCpf');
-    debugPrint('CPF original do perfil: $_userCpf');
+    _log('CPF para pagamento: ${_maskCpf(cleanCpf)}');
 
     if (cleanCpf.isEmpty) {
       setState(() {
@@ -2000,7 +2010,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // Itens do pedido (nome, código, categoria, descrição, preço)
       'items': items,
       'additional_info': {'items': items},
-      if (notificationUrl != null) 'notificationUrl': notificationUrl,
+      if (notificationUrl.isNotEmpty) 'notificationUrl': notificationUrl,
       if (deviceSessionId != null) 'deviceId': deviceSessionId,
       'externalReference': externalReference,
       'external_reference': externalReference,
@@ -2020,12 +2030,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       'cardToken': cardToken,
       'cardNumber': cardNumber,
     };
-    debugPrint('Body: ${jsonEncode(requestBody)}');
+    _log('Enviando requisição de pagamento (cartão).');
 
     debugPrint('=== DEBUG: Enviando requisição para o backend ===');
     debugPrint('URL: ${BackendUrl.baseUrl}/create-payment');
     debugPrint('Headers: ${jsonEncode(headers)}');
-    debugPrint('Body: ${jsonEncode(requestBody)}');
+    _log('Enviando requisição de pagamento (cartão).');
 
     final response = await http.post(
       Uri.parse('${BackendUrl.baseUrl}/create-payment'),
@@ -2033,10 +2043,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       body: jsonEncode(requestBody),
     );
 
-    debugPrint('=== DEBUG: Resposta do pagamento com cartão ===');
+    _log('=== DEBUG: Resposta do pagamento com cartão ===');
     debugPrint('Status Code: ${response.statusCode}');
     debugPrint('Response Headers: ${response.headers}');
-    debugPrint('Response Body: ${response.body}');
+    _log('Resposta cartão recebida (status=${response.statusCode}).');
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final status = data['status'] as String?;

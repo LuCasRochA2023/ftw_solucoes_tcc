@@ -145,7 +145,10 @@ class AuthService {
   Future<UserCredential> registerWithEmailAndPassword(
       String email, String password, String name) async {
     try {
-      debugPrint('Iniciando registro de usuário: $email');
+      final m = RegExp(r'(^.).*(@.*$)').firstMatch(email);
+      final safeEmail =
+          m == null ? '***' : '${m.group(1)}***${m.group(2)}';
+      debugPrint('Iniciando registro de usuário: $safeEmail');
 
       // Validar dados antes de criar o usuário
       if (!ValidationUtils.isValidName(name)) {
