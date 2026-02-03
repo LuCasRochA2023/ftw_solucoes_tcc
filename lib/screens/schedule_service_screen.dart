@@ -338,9 +338,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Mapa de preços dos serviços
   static const Map<String, double> _servicePrices = {
-    'Lavagem SUV': 75.0,
-    'Lavagem Carro Comum': 65.0,
-    'Lavagem Caminhonete': 95.0,
+    'Lavagem SUV': 80.0,
+    'Lavagem SUV Grande': 95.0,
+    'Lavagem Carro Comum': 75.0,
+    'Lavagem Caminhonete com Caçamba': 115.0,
+    'Enceramento': 60.0,
     'Leva e Traz': 15.0,
   };
 
@@ -394,17 +396,47 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   double _calculateTotalValue() {
     double total = 0;
 
+    double? _parsePrice(dynamic raw) {
+      if (raw == null) return null;
+      if (raw is num) return raw.toDouble();
+      if (raw is String) {
+        final s = raw.trim();
+        if (s.isEmpty) return null;
+        // Aceita formatos como "R$ 60,00", "60,00", "60.00"
+        final cleaned = s
+            .replaceAll('R\$', '')
+            .replaceAll(RegExp(r'\s+'), '')
+            .replaceAll('.', '')
+            .replaceAll(',', '.');
+        return double.tryParse(cleaned);
+      }
+      return null;
+    }
+
+    double _getServicePrice(Map<String, dynamic> service) {
+      final title = (service['title'] ?? '').toString().trim();
+      final fixed = _servicePrices[title];
+      if (fixed != null) return fixed;
+
+      // Fallback: se o serviço veio com preço na lista
+      final fromPriceField = _parsePrice(service['price']);
+      if (fromPriceField != null) return fromPriceField;
+
+      // Fallback adicional: alguns fluxos usam "value"
+      final fromValueField = _parsePrice(service['value']);
+      if (fromValueField != null) return fromValueField;
+
+      return 0.0;
+    }
+
     // Calcular valor dos serviços
     for (final service in widget.services) {
-      final title = service['title'] as String;
-      if (_servicePrices.containsKey(title)) {
-        total += _servicePrices[title]!;
-      }
+      total += _getServicePrice(service);
     }
 
     // Adicionar opcional de cera (apenas para serviços de lavagem)
     bool hasWashingService = widget.services.any((service) {
-      final title = (service['title'] as String).toLowerCase();
+      final title = (service['title'] ?? '').toString().toLowerCase();
       return (title.contains('lavagem suv') ||
               title.contains('lavagem carro comum') ||
               title.contains('lavagem caminhonete')) &&
@@ -421,17 +453,22 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   bool _hasServicesWithPrice() {
     for (final service in widget.services) {
-      final title = service['title'] as String;
-      if (_servicePrices.containsKey(title)) {
-        return true;
-      }
+      final title = (service['title'] ?? '').toString().trim();
+      final fixed = _servicePrices[title];
+      if (fixed != null && fixed > 0) return true;
+
+      final fromPriceField = service['price'];
+      if (fromPriceField is String && fromPriceField.contains('R\$')) return true;
+
+      final fromValueField = service['value'];
+      if (fromValueField is num && fromValueField.toDouble() > 0) return true;
     }
     return false;
   }
 
   bool _hasWashingServices() {
     return widget.services.any((service) {
-      final title = (service['title'] as String).toLowerCase();
+      final title = (service['title'] ?? '').toString().toLowerCase();
       return (title.contains('lavagem suv') ||
               title.contains('lavagem carro comum') ||
               title.contains('lavagem caminhonete')) &&
@@ -2073,7 +2110,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       overflow: TextOverflow.visible,
                     ),
                     Text(
-                      '• Valor: Preço a combinar',
+                      () {
+                        final total = _calculateTotalValue();
+                        if (total <= 0) return '• Valor: Preço a combinar';
+                        return '• Valor: R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}';
+                      }(),
                       style: GoogleFonts.poppins(fontSize: 14),
                     ),
                   ],

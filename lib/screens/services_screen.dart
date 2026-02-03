@@ -19,9 +19,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
   // Preços atuais (fixos). Serviços "Preço a combinar" continuam vindo do histórico.
   static const Map<String, double> _currentFixedPrices = {
-    'Lavagem SUV': 75.0,
-    'Lavagem Carro Comum': 65.0,
-    'Lavagem Caminhonete': 95.0,
+    'Lavagem SUV': 85.0,
+    'Lavagem SUV Grande': 95.0,
+    'Lavagem Carro Comum': 75.0,
+    'Lavagem Caminhonete com Caçamba': 115.0,
+    'Enceramento': 60.0,
     'Leva e Traz': 20.0,
   };
 
@@ -57,7 +59,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
             'title': 'Lavagem Carro Comum',
             'description': 'Lavagem completa externa e interna',
             'date': DateTime.now(),
-            'value': 65.0,
+            'value': 75.0,
             'status': 'concluído',
           },
           {

@@ -141,8 +141,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
     // Verificar se há pelo menos um serviço de lavagem selecionado
     final List<String> washingServiceTitles = [
       'Lavagem SUV',
+      'Lavagem SUV Grande',
       'Lavagem Carro Comum',
-      'Lavagem Caminhonete'
+      'Lavagem Caminhonete com Caçamba',
     ];
 
     for (int selectedIndex in _selectedIndexes) {
@@ -161,8 +162,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
   bool _isLavagemService(String serviceTitle) {
     final List<String> lavagemServices = [
       'Lavagem SUV',
+      'Lavagem SUV Grande',
       'Lavagem Carro Comum',
-      'Lavagem Caminhonete'
+      'Lavagem Caminhonete com Caçamba',
     ];
     return lavagemServices.contains(serviceTitle);
   }
@@ -191,7 +193,15 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             'Lavagem completa externa e interna com produtos premium',
         'icon': Icons.directions_car,
         'color': Colors.lightBlue,
-        'price': 'R\$ 75,00',
+        'price': 'R\$ 85,00',
+      },
+      {
+        'title': 'Lavagem SUV Grande',
+        'subtitle': 'SUV GRANDE',
+        'description': 'Lavagem completa para SUVs grandes',
+        'icon': Icons.directions_car,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 95,00',
       },
       {
         'title': 'Lavagem Carro Comum',
@@ -199,15 +209,15 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 65,00',
+        'price': 'R\$ 75,00',
       },
       {
-        'title': 'Lavagem Caminhonete',
-        'subtitle': 'Completa',
-        'description': 'Lavagem especializada para veículos grandes',
+        'title': 'Lavagem Caminhonete com Caçamba',
+        'subtitle': 'Caçamba',
+        'description': 'Lavagem completa incluindo caçamba',
         'icon': Icons.local_shipping,
         'color': Colors.lightBlue,
-        'price': 'R\$ 95,00',
+        'price': 'R\$ 115,00',
       },
       {
         'title': 'Leva e Traz',
@@ -215,7 +225,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Busca, lavagem e entrega do veículo',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 15,00',
+        'price': 'R\$ 20,00',
       },
     ];
 
@@ -254,11 +264,11 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
       },
       {
         'title': 'Enceramento',
-        'subtitle': 'Carnaúba',
+        'subtitle': 'Carnaúba Vonixx',
         'description': 'Aplicação de cera de carnaúba natural',
         'icon': Icons.auto_awesome_motion,
         'color': Colors.lightBlue,
-        'price': 'Preço a combinar',
+        'price': 'R\$ 60,00',
       },
       {
         'title': 'Cristalização de Faróis',
@@ -453,8 +463,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
   bool _isWashingService(String serviceTitle) {
     final washingServices = [
       'lavagem suv',
+      'lavagem suv grande',
       'lavagem carro comum',
-      'lavagem caminhonete',
+      'lavagem caminhonete com caçamba',
     ];
     return washingServices.contains(serviceTitle.toLowerCase());
   }
@@ -469,6 +480,14 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           'Aplicação de cera líquida para proteção da pintura',
           'Limpeza de vidros e espelhos com produto anti-embaçante',
         ];
+      case 'lavagem suv grande':
+        return [
+          'Lavagem completa externa com shampoo especial',
+          'Limpeza interna com aspirador e produtos específicos',
+          'Atenção extra em áreas maiores (teto e laterais)',
+          'Secagem manual para evitar manchas e riscos',
+          'Aplicação de cera líquida para proteção da pintura',
+        ];
       case 'lavagem carro comum':
         return [
           'Lavagem externa com shampoo neutro de alta qualidade',
@@ -477,7 +496,7 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
           'Secagem manual para evitar riscos na pintura',
           'Aplicação de cera para proteção e brilho',
         ];
-      case 'lavagem caminhonete':
+      case 'lavagem caminhonete com caçamba':
         return [
           'Lavagem especializada para veículos de grande porte',
           'Limpeza da caçamba com produtos específicos',
@@ -610,7 +629,15 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
             'Lavagem completa externa e interna com produtos premium',
         'icon': Icons.directions_car,
         'color': Colors.lightBlue,
-        'price': 'R\$ 75,00',
+        'price': 'R\$ 85,00',
+      },
+      {
+        'title': 'Lavagem SUV Grande',
+        'subtitle': 'SUV GRANDE',
+        'description': 'Lavagem completa para SUVs grandes',
+        'icon': Icons.directions_car,
+        'color': Colors.lightBlue,
+        'price': 'R\$ 95,00',
       },
       {
         'title': 'Lavagem Carro Comum',
@@ -618,15 +645,15 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'description': 'Lavagem detalhada externa e interna com shampoo neutro',
         'icon': Icons.directions_car_filled,
         'color': Colors.lightBlue,
-        'price': 'R\$ 65,00',
+        'price': 'R\$ 75,00',
       },
       {
-        'title': 'Lavagem Caminhonete',
-        'subtitle': 'Completa',
-        'description': 'Lavagem especializada para veículos grandes',
+        'title': 'Lavagem Caminhonete com Caçamba',
+        'subtitle': 'Caçamba',
+        'description': 'Lavagem completa incluindo caçamba',
         'icon': Icons.local_shipping,
         'color': Colors.lightBlue,
-        'price': 'R\$ 95,00',
+        'price': 'R\$ 115,00',
       },
       {
         'title': 'Leva e Traz',
@@ -672,12 +699,12 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
         'price': 'Preço a combinar',
       },
       {
-        'title': 'Enceramento',
-        'subtitle': 'Carnaúba',
+        'title': 'Enceramento Manual',
+        'subtitle': 'Carnaúba Vonixx',
         'description': 'Aplicação de cera de carnaúba natural',
         'icon': Icons.auto_awesome_motion,
         'color': Colors.lightBlue,
-        'price': 'Preço a combinar',
+        'price': 'R\$ 60,00',
       },
       {
         'title': 'Cristalização de Faróis',
@@ -858,7 +885,8 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
                                   ? Colors.grey
                                   : null,
                             ),
-                            maxLines: service['title'] == 'Lavagem Caminhonete'
+                            maxLines: service['title'] ==
+                                    'Lavagem Caminhonete com Caçamba'
                                 ? 2
                                 : 1,
                             overflow: TextOverflow.ellipsis,

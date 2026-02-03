@@ -42,12 +42,16 @@ class PaymentScreen extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentScreen> {
+  // Mantemos o código de cartão no arquivo para uso futuro, mas desabilitamos
+  // a opção na UI (somente PIX) conforme solicitado.
+  static const bool _enableCardPayment = false;
+
   bool _isProcessing = false;
   String? _errorMessage;
   String? _pixQrCode;
   String? _paymentId;
   Timer? _statusTimer;
-  int _selectedTab = 0; // 0 = Pix, 1 = Cartão
+  int _selectedTab = 0; // 0 = Pix, 1 = Cartão (desabilitado se _enableCardPayment=false)
   bool _isInitialized = false; // Flag para evitar inicialização duplicada
   bool _isDisposed = false; // Flag para controlar se a tela foi descartada
   bool _walletDebitProcessed = false; // Evita debitar saldo 2x no mesmo fluxo
@@ -815,7 +819,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       // Mesmo usando saldo, aqui registramos o método do "restante" (PIX/Cartão).
       // O valor usado do saldo fica em balanceUsed.
-      paymentMethod = _selectedTab == 0 ? 'pix' : 'credit_card';
+      paymentMethod = 'pix';
       canRefund = true;
 
       // Salvar informações do pagamento para devolução futura
@@ -1163,22 +1167,24 @@ class _PaymentScreenState extends State<PaymentScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _buildPaymentOptionCard(
-                  selected: _selectedTab == 0,
+                  selected: !_enableCardPayment || _selectedTab == 0,
                   icon: Image.asset('assets/images/pix.png',
                       height: 40, width: 40),
                   label: 'Pix',
                   onTap: () => setState(() => _selectedTab = 0),
                   color: Colors.green,
                 ),
-                const SizedBox(width: 24),
-                _buildPaymentOptionCard(
-                  selected: _selectedTab == 1,
-                  icon: const Icon(Icons.credit_card,
-                      size: 40, color: Colors.white),
-                  label: 'Cartão',
-                  onTap: () => setState(() => _selectedTab = 1),
-                  color: Colors.blue,
-                ),
+                if (_enableCardPayment) ...[
+                  const SizedBox(width: 24),
+                  _buildPaymentOptionCard(
+                    selected: _selectedTab == 1,
+                    icon: const Icon(Icons.credit_card,
+                        size: 40, color: Colors.white),
+                    label: 'Cartão',
+                    onTap: () => setState(() => _selectedTab = 1),
+                    color: Colors.blue,
+                  ),
+                ],
               ],
             ),
           ),
@@ -1186,9 +1192,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              child: _selectedTab == 0
-                  ? _buildPixWidget()
-                  : _buildCreditCardWidget(),
+              child: (_enableCardPayment && _selectedTab == 1)
+                  ? _buildCreditCardWidget()
+                  : _buildPixWidget(),
             ),
           ),
         ],
