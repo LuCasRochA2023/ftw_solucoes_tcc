@@ -1,6 +1,9 @@
 # Uncomment this line to define a global platform for your project
 platform :ios, '13.0'
 
+# Firebase pods include Swift; using static libraries requires modular headers.
+use_modular_headers!
+
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -29,7 +32,7 @@ require 'fileutils'
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -63,6 +66,65 @@ post_install do |installer|
     # Pods sources can be marked read-only; make the file writable first.
     FileUtils.chmod('u+w', path)
     File.write(path, fixed)
+  end
+
+  # CocoaPods + modular headers can end up with the gRPC modulemap referenced at:
+  #   Pods/Headers/Private/grpc/gRPC-Core.modulemap
+  # but the headers are under:
+  #   Pods/Headers/Private/gRPC-Core/grpc/
+  # Ensure the expected path exists to avoid "module map file not found".
+  begin
+    pods_root = installer.sandbox.root.to_s
+    headers_private = File.join(pods_root, 'Headers', 'Private')
+    grpc_headers_src = File.join(headers_private, 'gRPC-Core', 'grpc')
+    grpc_headers_dest = File.join(headers_private, 'grpc')
+    grpc_modulemap_src = File.join(pods_root, 'Target Support Files', 'gRPC-Core', 'gRPC-Core.modulemap')
+    grpc_modulemap_dest = File.join(grpc_headers_src, 'gRPC-Core.modulemap')
+
+    if File.exist?(grpc_headers_src) && File.exist?(grpc_modulemap_src)
+      FileUtils.chmod('u+w', grpc_modulemap_src) rescue nil
+      # Put the modulemap next to grpc.h so relative paths resolve.
+      FileUtils.cp(grpc_modulemap_src, grpc_modulemap_dest)
+
+      # Make `Headers/Private/grpc` point to the real grpc headers dir.
+      if File.symlink?(grpc_headers_dest)
+        existing = File.readlink(grpc_headers_dest) rescue nil
+        if existing != grpc_headers_src
+          FileUtils.rm_f(grpc_headers_dest)
+        end
+      end
+      unless File.exist?(grpc_headers_dest)
+        FileUtils.ln_s(grpc_headers_src, grpc_headers_dest)
+      end
+    end
+  rescue => e
+    # Best-effort only; don't fail pod install.
+    puts "[post_install] gRPC modulemap workaround skipped: #{e}"
+  end
+
+  # Some generated xcconfig files may reference a non-existent modulemap path:
+  #   ${PODS_ROOT}/Headers/Private/grpc/gRPC-Core.modulemap
+  # Point them to the modulemap we placed alongside grpc.h:
+  #   ${PODS_ROOT}/Headers/Private/gRPC-Core/grpc/gRPC-Core.modulemap
+  begin
+    pods_root = installer.sandbox.root.to_s
+    xcconfigs = Dir.glob(File.join(pods_root, 'Target Support Files', '**', '*.xcconfig'))
+    xcconfigs.each do |xcconfig_path|
+      next unless File.file?(xcconfig_path)
+      contents = File.read(xcconfig_path)
+      next unless contents.include?('Headers/Private/grpc/gRPC-Core.modulemap')
+
+      fixed = contents.gsub(
+        'Headers/Private/grpc/gRPC-Core.modulemap',
+        'Headers/Private/gRPC-Core/grpc/gRPC-Core.modulemap'
+      )
+      next if fixed == contents
+
+      FileUtils.chmod('u+w', xcconfig_path) rescue nil
+      File.write(xcconfig_path, fixed)
+    end
+  rescue => e
+    puts "[post_install] xcconfig gRPC modulemap patch skipped: #{e}"
   end
 
   installer.pods_project.targets.each do |target|

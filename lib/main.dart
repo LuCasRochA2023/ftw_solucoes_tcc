@@ -10,7 +10,6 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -90,13 +89,17 @@ class MyApp extends StatelessWidget {
           stream: authService.authStateChanges,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const SplashScreen(nextScreen: null);
+              return const Scaffold(
+                backgroundColor: Colors.white,
+                body: Center(
+                  child: CircularProgressIndicator(),
+                ),
+              );
             }
 
-            return SplashScreen(
-                nextScreen: snapshot.hasData
-                    ? HomeScreen(authService: authService)
-                    : LoginScreen(authService: authService));
+            return snapshot.hasData
+                ? HomeScreen(authService: authService)
+                : LoginScreen(authService: authService);
           },
         ),
       ),
@@ -384,7 +387,8 @@ class _UpdateGateState extends State<UpdateGate> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: Platform.isAndroid ? _bootstrap : _openStore,
-                    child: Text(Platform.isAndroid ? 'Atualizar agora' : 'Abrir loja'),
+                    child: Text(
+                        Platform.isAndroid ? 'Atualizar agora' : 'Abrir loja'),
                   ),
                 ],
               ],

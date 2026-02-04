@@ -68,16 +68,17 @@ flutter:
 
 flutter_native_splash:
   color: "#FFFFFF"
-  image: assets/images/entradaFtw.png
+  image: assets/icon/icon_1024.png
+  image_ios: assets/icon/icon_1024.png
   android: true
   ios: true
 
 flutter_icons:
   android: true
   ios: true
-  image_path: "assets/images/pix.png"
+  image_path: "assets/icon/icon_1024.png"
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/images/pix.png"
+  adaptive_icon_foreground: "assets/icon/icon_1024.png"
 
 
