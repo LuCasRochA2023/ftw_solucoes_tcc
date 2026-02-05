@@ -325,9 +325,9 @@ class _UpdateGateState extends State<UpdateGate> {
       }
 
       // iOS: precisa do App Store ID (ex: 1234567890). Sem ele, mostramos mensagem.
-      // Configure aqui quando tiver:
-      const iosAppStoreId = null; // ex: '1234567890'
-      if (iosAppStoreId is String && iosAppStoreId.isNotEmpty) {
+      // Configure via .env: IOS_APP_STORE_ID=1234567890
+      final iosAppStoreId = dotenv.env['IOS_APP_STORE_ID']?.trim() ?? '';
+      if (iosAppStoreId.isNotEmpty) {
         final url = Uri.parse('https://apps.apple.com/app/id$iosAppStoreId');
         await launchUrl(url, mode: LaunchMode.externalApplication);
       }
