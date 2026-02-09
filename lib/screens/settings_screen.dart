@@ -91,10 +91,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           await _firestore.collection('users').doc(user.uid).delete();
           await user.delete();
           if (mounted) {
-            Navigator.of(context).pushNamedAndRemoveUntil(
-              '/login',
-              (route) => false,
-            );
+            // Volta para a tela inicial (modo convidado) sem forçar login.
+            Navigator.of(context).popUntil((route) => route.isFirst);
           }
         }
       } catch (e) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -10,6 +11,8 @@ import 'payment_screen.dart';
 import 'cars_screen.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
+import 'login_screen.dart';
+import 'register_screen.dart';
 import '../utils/validation_utils.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
@@ -39,6 +42,14 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   List<Map<String, dynamic>> _userCars = [];
   final TextEditingController _balanceAmountController =
       TextEditingController();
+
+  StreamSubscription<User?>? _authSub;
+
+  bool _isPermissionDenied(Object e) {
+    // Firestore lança FirebaseException com code 'permission-denied'
+    if (e is FirebaseException) return e.code == 'permission-denied';
+    return e.toString().contains('permission-denied');
+  }
 
   static bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -222,6 +233,146 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     }
   }
 
+  Future<bool> _ensureRegisteredToPickTime() async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current != null && !current.isAnonymous) return true;
+    if (!mounted) return false;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Entrar para escolher o horário',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Você pode acessar o app sem cadastro. Para selecionar um horário e continuar o agendamento, entre ou crie uma conta.',
+          style: GoogleFonts.poppins(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: Text('Cancelar', style: GoogleFonts.poppins()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('register'),
+            child: Text('Criar conta', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('login'),
+            child: Text('Entrar', style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return false;
+    if (action == null) return false;
+
+    if (action == 'login') {
+      if (!mounted) return false;
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(
+            authService: widget.authService,
+            popOnSuccess: true,
+          ),
+        ),
+      );
+    } else if (action == 'register') {
+      if (!mounted) return false;
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RegisterScreen(
+            authService: widget.authService,
+            popOnSuccess: true,
+          ),
+        ),
+      );
+    }
+
+    if (!mounted) return false;
+    final after = FirebaseAuth.instance.currentUser;
+    final ok = after != null && !after.isAnonymous;
+    if (ok) {
+      // Após login/registro, recarrega os carros sem precisar voltar a tela.
+      await _loadUserCars();
+    }
+    return ok;
+  }
+
+  Future<bool> _ensureRegisteredToAddCar() async {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current != null && !current.isAnonymous) return true;
+    if (!mounted) return false;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Entrar para adicionar carro',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Para cadastrar um carro, entre ou crie uma conta.',
+          style: GoogleFonts.poppins(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: Text('Cancelar', style: GoogleFonts.poppins()),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('register'),
+            child: Text('Criar conta', style: GoogleFonts.poppins()),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('login'),
+            child: Text('Entrar', style: GoogleFonts.poppins()),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return false;
+    if (action == null) return false;
+
+    if (action == 'login') {
+      if (!mounted) return false;
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(
+            authService: widget.authService,
+            popOnSuccess: true,
+          ),
+        ),
+      );
+    } else if (action == 'register') {
+      if (!mounted) return false;
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RegisterScreen(
+            authService: widget.authService,
+            popOnSuccess: true,
+          ),
+        ),
+      );
+    }
+
+    if (!mounted) return false;
+    final after = FirebaseAuth.instance.currentUser;
+    final ok = after != null && !after.isAnonymous;
+    if (ok) {
+      // Após login/registro, recarrega os carros sem precisar voltar a tela.
+      await _loadUserCars();
+    }
+    return ok;
+  }
+
   // Função para obter a próxima data disponível (não domingo e não feriado)
   static DateTime _getNextAvailableDate(DateTime date) {
     DateTime currentDate = DateTime(date.year, date.month, date.day);
@@ -364,11 +515,29 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   @override
   void initState() {
     super.initState();
+    // Quando o usuário faz login/registro, recarrega carros automaticamente
+    // sem precisar voltar a tela.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (!mounted) return;
+      if (user != null && !user.isAnonymous) {
+        // Pequeno delay para garantir tokens prontos após login.
+        await Future.delayed(const Duration(milliseconds: 200));
+        if (!mounted) return;
+        await _loadUserCars();
+      } else {
+        // Se saiu/virou convidado, limpa seleção/lista na UI.
+        setState(() {
+          _userCars = [];
+          _selectedCar = null;
+        });
+      }
+    });
     _initializeAsync();
   }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     super.dispose();
   }
 
@@ -797,7 +966,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   }
 
   // Função para verificar se o horário está disponível (apenas agendamentos confirmados/pendentes)
-  Future<bool> _isTimeSlotAvailable(DateTime selectedDateTime) async {
+  Future<bool?> _isTimeSlotAvailable(DateTime selectedDateTime) async {
     try {
       debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
       debugPrint('Data/Hora: $selectedDateTime');
@@ -862,6 +1031,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       return true;
     } catch (e) {
       debugPrint('Erro ao verificar disponibilidade: $e');
+      // Se não temos permissão (ex.: App Check / regras), não exibir mensagem
+      // e sinalizar que não foi possível verificar agora.
+      if (_isPermissionDenied(e)) return null;
       return false;
     }
   }
@@ -1173,14 +1345,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao carregar horários : $e');
-      setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao carregar horários: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() {
+          _bookedTimeSlots = {}; // fallback seguro
+          _isLoading = false;
+        });
       }
     }
   }
@@ -2257,6 +2426,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               const SizedBox(height: 8),
                               ElevatedButton(
                                 onPressed: () async {
+                                  final registered =
+                                      await _ensureRegisteredToAddCar();
+                                  if (!registered) return;
+                                  if (!mounted) return;
+
                                   final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
@@ -2346,6 +2520,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                           const SizedBox(height: 8),
                           TextButton.icon(
                             onPressed: () async {
+                              final registered =
+                                  await _ensureRegisteredToAddCar();
+                              if (!registered) return;
+                              if (!mounted) return;
+
                               final result = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -2626,23 +2805,30 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                             child: InkWell(
                               onTap: canSelect
                                   ? () async {
+                                      final registered =
+                                          await _ensureRegisteredToPickTime();
+                                      if (!registered) return;
+                                      if (!context.mounted) return;
+
                                       // Verificar se o horário ainda está disponível
                                       final isStillAvailable =
                                           await _isTimeSlotAvailable(slotTime);
-                                      if (!isStillAvailable) {
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Este horário não está mais disponível. Por favor, escolha outro horário.'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
+                                      // null = não foi possível verificar (ex.: permission-denied)
+                                      if (isStillAvailable == null) return;
+                                      if (isStillAvailable == false) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                                'Este horário não está mais disponível. Por favor, escolha outro horário.'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
                                         return;
                                       }
 
+                                      if (!context.mounted) return;
                                       setState(() {
                                         _selectedTime = timeSlot;
                                       });

@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
 import 'package:ftw_solucoes/screens/profile_screen.dart';
+import 'package:ftw_solucoes/screens/login_screen.dart';
+import 'package:ftw_solucoes/screens/register_screen.dart';
 import '../services/auth_service.dart';
 import 'package:flutter/services.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
@@ -302,6 +304,60 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _initializePayment();
   }
 
+  Future<bool> _ensureRegisteredForPayment() async {
+    final current = FirebaseAuth.instance.currentUser;
+    // Se for anônimo, ainda é "convidado" (sem cadastro).
+    if (current != null && !current.isAnonymous) return true;
+    if (!mounted) return false;
+
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Entrar para pagar'),
+        content: const Text(
+            'Para continuar com o pagamento, crie uma conta ou entre com seu email.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(null),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop('register'),
+            child: const Text('Criar conta'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop('login'),
+            child: const Text('Entrar'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || action == null) return false;
+
+    final authService = AuthService();
+    if (action == 'login') {
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              LoginScreen(authService: authService, popOnSuccess: true),
+        ),
+      );
+    } else if (action == 'register') {
+      await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              RegisterScreen(authService: authService, popOnSuccess: true),
+        ),
+      );
+    }
+
+    final after = FirebaseAuth.instance.currentUser;
+    return after != null && !after.isAnonymous;
+  }
+
   Future<void> _initializePayment() async {
     if (_isInitialized) {
       debugPrint('=== DEBUG: Pagamento já inicializado, pulando... ===');
@@ -314,6 +370,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
     // IMPORTANTE:
     // Se o usuário escolheu usar saldo (balanceToUse) junto com PIX/Cartão,
     // não podemos debitar o saldo aqui — só após o pagamento ser aprovado.
+
+    final registered = await _ensureRegisteredForPayment();
+    if (!registered) {
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
 
     // Primeiro carregar o CPF, depois criar o pagamento
     await _loadUserCpf();

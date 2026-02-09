@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/screens/about_screen.dart';
-import 'package:ftw_solucoes/screens/login_screen.dart';
 import 'package:ftw_solucoes/screens/settings_screen.dart';
 import 'package:ftw_solucoes/services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -25,6 +24,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = '';
   String? _photoUrl;
   bool _snackbarShown = false;
+
+  bool get _isGuest =>
+      widget.authService.currentUser == null ||
+      (widget.authService.currentUser?.isAnonymous ?? false);
 
   @override
   void initState() {
@@ -100,19 +103,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleLogout() async {
+    if (_isGuest) return;
     await widget.authService.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => LoginScreen(authService: widget.authService),
-        ),
-        (route) => false,
-      );
-    }
+    if (!mounted) return;
+    // Volta para a Home (modo convidado) sem forçar login.
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = widget.authService.currentUser;
+    final isGuest = user == null || user.isAnonymous;
+
     // Exibe Snackbar de sucesso se argumento for passado, apenas uma vez
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_snackbarShown) {
@@ -138,23 +140,25 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.account_balance_wallet),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BalanceScreen(
-                    authService: widget.authService,
+          if (!isGuest)
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BalanceScreen(
+                      authService: widget.authService,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _handleLogout,
-          ),
+                );
+              },
+            ),
+          if (!isGuest)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              onPressed: _handleLogout,
+            ),
         ],
       ),
       drawer: Drawer(
@@ -163,14 +167,16 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             UserAccountsDrawerHeader(
               accountName: Text(
-                _userName,
+                isGuest ? 'Convidado' : _userName,
                 style: GoogleFonts.poppins(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               accountEmail: Text(
-                widget.authService.currentUser?.email ?? '',
+                isGuest
+                    ? 'Entre para finalizar o pagamento'
+                    : (user.email ?? ''),
                 style: GoogleFonts.poppins(
                   color: Colors.white70,
                 ),
@@ -252,59 +258,63 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: Theme.of(context).primaryColor,
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.person),
-              title: const Text('Perfil'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        ProfileScreen(authService: widget.authService),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.directions_car),
-              title: Text(
-                'Meus Carros',
-                style: GoogleFonts.poppins(),
-              ),
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyCarsScreen(),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings),
-              title: Text(
-                'Configurações',
-                style: GoogleFonts.poppins(),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
+            if (!isGuest)
+              ListTile(
+                leading: const Icon(Icons.person),
+                title: const Text('Perfil'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
                     context,
                     MaterialPageRoute(
-                        builder: (context) =>
-                            SettingsScreen(authService: widget.authService)));
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.logout),
-              title: Text(
-                'Sair',
-                style: GoogleFonts.poppins(),
+                      builder: (context) =>
+                          ProfileScreen(authService: widget.authService),
+                    ),
+                  );
+                },
               ),
-              onTap: _handleLogout,
-            ),
+            if (!isGuest)
+              ListTile(
+                leading: const Icon(Icons.directions_car),
+                title: Text(
+                  'Meus Carros',
+                  style: GoogleFonts.poppins(),
+                ),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MyCarsScreen(),
+                    ),
+                  );
+                },
+              ),
+            if (!isGuest)
+              ListTile(
+                leading: const Icon(Icons.settings),
+                title: Text(
+                  'Configurações',
+                  style: GoogleFonts.poppins(),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) =>
+                              SettingsScreen(authService: widget.authService)));
+                },
+              ),
+            const Divider(),
+            if (!isGuest)
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: Text(
+                  'Sair',
+                  style: GoogleFonts.poppins(),
+                ),
+                onTap: _handleLogout,
+              ),
           ],
         ),
       ),
@@ -388,35 +398,36 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ServiceHistoryScreen(authService: widget.authService),
+              if (!isGuest)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ServiceHistoryScreen(
+                            authService: widget.authService),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    elevation: 2,
                   ),
-                  elevation: 2,
-                ),
-                icon: const Icon(Icons.history),
-                label: Text(
-                  'Meus Agendamentos',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                  icon: const Icon(Icons.history),
+                  label: Text(
+                    'Meus Agendamentos',
+                    style: GoogleFonts.poppins(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),

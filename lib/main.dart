@@ -10,7 +10,6 @@ import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/auth_service.dart';
@@ -47,6 +46,18 @@ void main() async {
     debugPrint('Erro ao carregar .env: $e');
   }
   await initializeFirebase();
+
+  // Garante uma sessão (anônima) para não quebrar as regras do Firestore:
+  // `allow read, write: if request.auth != null;`
+  // Isso permite usar o app "sem cadastro" (sem email/senha), mas com auth válido.
+  try {
+    if (FirebaseAuth.instance.currentUser == null) {
+      await FirebaseAuth.instance.signInAnonymously();
+      debugPrint('Sessão anônima iniciada com sucesso');
+    }
+  } catch (e) {
+    debugPrint('Erro ao iniciar sessão anônima: $e');
+  }
 
   FirebaseAuth.instance.authStateChanges().listen(
     (User? user) {
@@ -97,9 +108,9 @@ class MyApp extends StatelessWidget {
               );
             }
 
-            return snapshot.hasData
-                ? HomeScreen(authService: authService)
-                : LoginScreen(authService: authService);
+            // Permite usar o app como convidado (sem login).
+            // O login/registro será solicitado apenas quando necessário (ex.: pagamento).
+            return HomeScreen(authService: authService);
           },
         ),
       ),

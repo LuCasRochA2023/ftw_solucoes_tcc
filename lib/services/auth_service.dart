@@ -51,18 +51,33 @@ class AuthService {
         throw 'A senha deve conter letra maiúscula, minúscula e número';
       }
 
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Se estiver em sessão anônima (convidado), "converte" para conta real
+      // para manter o mesmo UID e preservar dados já criados no Firestore.
+      final current = _auth.currentUser;
+      UserCredential userCredential;
+      if (current != null && current.isAnonymous) {
+        final credential =
+            EmailAuthProvider.credential(email: email, password: password);
+        userCredential = await current.linkWithCredential(credential);
+      } else {
+        userCredential = await _auth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+      }
 
       await userCredential.user?.updateDisplayName(name);
 
-      await _firestore.collection('users').doc(userCredential.user?.uid).set({
-        'name': name,
-        'email': email,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      final uid = userCredential.user?.uid;
+      if (uid != null) {
+        await _firestore
+            .collection('users')
+            .doc(uid)
+            .set({'name': name, 'email': email}, SetOptions(merge: true));
+        await _firestore.collection('users').doc(uid).set({
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
     } catch (e) {
       throw 'Erro ao criar conta: ${e.toString()}';
     }

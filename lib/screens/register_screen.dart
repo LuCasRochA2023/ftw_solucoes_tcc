@@ -7,8 +7,13 @@ import 'package:ftw_solucoes/utils/error_handler.dart';
 
 class RegisterScreen extends StatefulWidget {
   final AuthService authService;
+  final bool popOnSuccess;
 
-  const RegisterScreen({Key? key, required this.authService}) : super(key: key);
+  const RegisterScreen({
+    Key? key,
+    required this.authService,
+    this.popOnSuccess = false,
+  }) : super(key: key);
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -46,10 +51,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-            builder: (context) => HomeScreen(authService: widget.authService)),
-      );
+      if (widget.popOnSuccess) {
+        Navigator.of(context).pop(true);
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+              builder: (context) =>
+                  HomeScreen(authService: widget.authService)),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -9,7 +9,6 @@ import 'dart:io';
 import 'dart:async';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
-import '../screens/login_screen.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -120,12 +119,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (!mounted) return;
       if (user == null) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(authService: widget.authService),
-          ),
-          (route) => false,
-        );
+        // Se o usuário sair enquanto está no perfil, volte para a Home (convidado).
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     });
   }
@@ -1013,12 +1008,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await widget.authService.signOut();
 
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(authService: widget.authService),
-          ),
-          (route) => false,
-        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {

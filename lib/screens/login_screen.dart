@@ -8,8 +8,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
   final AuthService authService;
+  final bool popOnSuccess;
 
-  const LoginScreen({Key? key, required this.authService}) : super(key: key);
+  const LoginScreen({
+    Key? key,
+    required this.authService,
+    this.popOnSuccess = false,
+  }) : super(key: key);
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -42,11 +47,15 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => HomeScreen(authService: widget.authService),
-        ),
-      );
+      if (widget.popOnSuccess) {
+        Navigator.of(context).pop(true);
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(authService: widget.authService),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -117,6 +126,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: widget.popOnSuccess
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios, color: Colors.black87),
+                onPressed: () => Navigator.of(context).pop(false),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -308,15 +327,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
 
                     TextButton(
-                      onPressed: () {
-                        Navigator.push(
+                      onPressed: () async {
+                        final result = await Navigator.push<bool>(
                           context,
                           MaterialPageRoute(
                             builder: (context) => RegisterScreen(
                               authService: widget.authService,
+                              popOnSuccess: widget.popOnSuccess,
                             ),
                           ),
                         );
+                        if (!context.mounted) return;
+                        if (widget.popOnSuccess && result == true) {
+                          Navigator.of(context).pop(true);
+                        }
                       },
                       child: Text(
                         'Não tem uma conta? Registre-se',
