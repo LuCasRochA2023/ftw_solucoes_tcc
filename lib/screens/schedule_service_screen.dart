@@ -614,7 +614,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
     if (hasWashingService && _selectedCera != null) {
       if (_selectedCera == 'carnauba') total += 30.0; // Preço invertido
-      if (_selectedCera == 'jetcera') total += 10.0; // Preço invertido
+      if (_selectedCera == 'jetcera') total += 20.0; // Preço invertido
+      if (_selectedCera == 'manual') total += 60.0; // Preço invertido
     }
 
     return total;
@@ -2639,7 +2640,45 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                                           ),
                                         ),
                                         Text(
-                                          '+R\$ 10,00',
+                                          '+R\$ 20,00',
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  Radio<String>(
+                                    value: 'manual',
+                                    // ignore: deprecated_member_use
+                                    groupValue: _selectedCera,
+                                    toggleable: true,
+                                    // ignore: deprecated_member_use
+                                    onChanged: (String? value) {
+                                      setState(() {
+                                        _selectedCera = value;
+                                      });
+                                    },
+                                    activeColor: _mainColor,
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Enceramento Manual',
+                                          style: GoogleFonts.poppins(
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        Text(
+                                          '+R\$ 60,00',
                                           style: GoogleFonts.poppins(
                                             color: Colors.grey[600],
                                             fontSize: 12,
@@ -2956,7 +2995,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                               Text(
                                 _selectedCera == 'carnauba'
                                     ? '• Cera de Carnaúba (+R\$ 30,00)'
-                                    : '• Jet-Cera (+R\$ 10,00)',
+                                    : (_selectedCera == 'jetcera'
+                                        ? '• Jet-Cera (+R\$ 20,00)'
+                                        : '• Enceramento Manual (+R\$ 60,00)'),
                                 style: GoogleFonts.poppins(
                                   fontSize: 12,
                                   color: _mainColor,

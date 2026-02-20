@@ -3,7 +3,7 @@ description: "Sistema de agendamento de serviços de estética automotiva."
 
 publish_to: 'none'
 
-version: 1.0.0+20
+version: 1.0.0+22
 
 environment:
   sdk: '>=3.2.3 <4.0.0'
@@ -73,12 +73,13 @@ flutter_native_splash:
   android: true
   ios: true
 
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icon/icon_1024.png"
+  image_path_android: "assets/icon/launcher_square_1024.png"
+  image_path_ios: "assets/icon/icon_1024.png"
   remove_alpha_ios: true
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icon/icon_1024.png"
+  adaptive_icon_foreground: "assets/icon/launcher_circle_1024.png"
 
 
