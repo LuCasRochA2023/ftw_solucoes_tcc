@@ -5,6 +5,9 @@ import 'package:ftw_solucoes/screens/schedule_service_screen.dart';
 import 'package:ftw_solucoes/services/distance_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/network_feedback.dart';
+import '../services/connectivity_events.dart';
+import 'dart:async';
 
 class AvailableServicesScreen extends StatefulWidget {
   final AuthService authService;
@@ -23,11 +26,21 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
   final Set<int> _selectedIndexes = {};
   bool _isLoadingDistance = false;
   bool _levaETrazAvailable = true; // Por padrão, disponível
+  StreamSubscription<void>? _onlineSub;
 
   @override
   void initState() {
     super.initState();
     _loadUserAddressAndCheckDistance();
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      _loadUserAddressAndCheckDistance();
+    });
+  }
+
+  @override
+  void dispose() {
+    _onlineSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadUserAddressAndCheckDistance() async {
@@ -66,6 +79,9 @@ class _AvailableServicesScreenState extends State<AvailableServicesScreen> {
     } catch (e) {
       debugPrint('Erro ao carregar endereço do usuário: $e');
       // Em caso de erro, mantém o serviço disponível por padrão
+      if (mounted && NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      }
     } finally {
       setState(() {
         _isLoadingDistance = false;

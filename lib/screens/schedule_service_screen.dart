@@ -14,17 +14,21 @@ import 'profile_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 import '../utils/validation_utils.dart';
+import '../utils/network_feedback.dart';
+import '../services/connectivity_events.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> services;
   final AuthService authService;
   final String? rescheduleAppointmentId; // ID do agendamento sendo reagendado
+  final String? rescheduleSessionId; // Identifica sessão de reagendamento
 
   const ScheduleServiceScreen({
     super.key,
     required this.services,
     required this.authService,
     this.rescheduleAppointmentId, // Parâmetro opcional para reagendamento
+    this.rescheduleSessionId,
   });
 
   @override
@@ -38,12 +42,17 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
+  // ID do agendamento "pending" criado para o fluxo de pagamento atual.
+  // Ao voltar do pagamento, não devemos bloquear o próprio horário.
+  String? _currentPaymentAppointmentId;
+  DateTime? _rescheduleOriginalDateTime;
   Map<String, dynamic>? _selectedCar;
   List<Map<String, dynamic>> _userCars = [];
   final TextEditingController _balanceAmountController =
       TextEditingController();
 
   StreamSubscription<User?>? _authSub;
+  StreamSubscription<void>? _onlineSub;
 
   bool _isPermissionDenied(Object e) {
     // Firestore lança FirebaseException com code 'permission-denied'
@@ -222,12 +231,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     } catch (e) {
       // Se não conseguir validar, não deixa agendar (evita agendamento sem dados).
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Não foi possível validar seu perfil: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Não foi possível validar seu perfil.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
       return false;
     }
@@ -532,12 +545,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         });
       }
     });
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) async {
+      // Ao voltar a internet, recarrega dados da tela.
+      await _generateTimeSlots();
+      await _loadBookedTimeSlots();
+      await _loadUserCars();
+    });
     _initializeAsync();
   }
 
   @override
   void dispose() {
     _authSub?.cancel();
+    _onlineSub?.cancel();
     super.dispose();
   }
 
@@ -547,10 +567,37 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     _mainIcon = widget.services.first['icon'] ?? Icons.build;
     await _initializeDateFormatting();
 
+    // Se for reagendamento, tenta carregar a data/hora original para permitir
+    // escolher o mesmo horário sem bloqueios.
+    if (widget.rescheduleAppointmentId != null) {
+      try {
+        final doc = await _firestore
+            .collection('appointments')
+            .doc(widget.rescheduleAppointmentId)
+            .get();
+        final data = doc.data();
+        final raw = data?['dateTime'];
+        if (raw is Timestamp) {
+          _rescheduleOriginalDateTime = raw.toDate();
+        } else if (raw is DateTime) {
+          _rescheduleOriginalDateTime = raw;
+        }
+        if (_rescheduleOriginalDateTime != null) {
+          final d = _rescheduleOriginalDateTime!;
+          _selectedDate = DateTime(d.year, d.month, d.day);
+          _selectedTime =
+              '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+        }
+      } catch (e) {
+        debugPrint('Falha ao carregar agendamento original (reagendar): $e');
+      }
+    }
+
     // Garantir regra: nunca permitir que a data selecionada seja hoje ou anterior.
     final minDate = _getMinBookingDate();
     if (_selectedDate.isBefore(minDate)) {
       _selectedDate = minDate;
+      _selectedTime = null;
     }
 
     await _generateTimeSlots();
@@ -844,8 +891,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       // Filtrar agendamentos pendentes, excluindo o que está sendo reagendado
       final otherPendingAppointments = querySnapshot.docs.where((doc) {
-        return widget.rescheduleAppointmentId == null ||
-            doc.id != widget.rescheduleAppointmentId;
+        if (widget.rescheduleAppointmentId != null &&
+            doc.id == widget.rescheduleAppointmentId) {
+          return false;
+        }
+        // Se já existe um pending do fluxo de pagamento atual, não bloquear por ele.
+        if (_currentPaymentAppointmentId != null &&
+            doc.id == _currentPaymentAppointmentId) {
+          return false;
+        }
+        return true;
       }).toList();
 
       debugPrint(
@@ -882,6 +937,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   /// Verificação atômica de disponibilidade de horário usando transações
   Future<bool> _checkTimeSlotAvailabilityAtomic(DateTime dateTime) async {
     try {
+      if (_rescheduleOriginalDateTime != null) {
+        final diff = dateTime.difference(_rescheduleOriginalDateTime!).abs();
+        if (diff.inMinutes < 1) return true;
+      }
       debugPrint('=== DEBUG: Verificação atômica de disponibilidade ===');
 
       final result = await FirebaseFirestore.instance
@@ -904,6 +963,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
           // Se for reagendamento, excluir o agendamento que está sendo reagendado
           if (widget.rescheduleAppointmentId != null &&
               doc.id == widget.rescheduleAppointmentId) {
+            return false;
+          }
+
+          // Se for o pending do fluxo de pagamento atual, não considerar como bloqueio.
+          if (_currentPaymentAppointmentId != null &&
+              doc.id == _currentPaymentAppointmentId) {
             return false;
           }
 
@@ -969,6 +1034,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   // Função para verificar se o horário está disponível (apenas agendamentos confirmados/pendentes)
   Future<bool?> _isTimeSlotAvailable(DateTime selectedDateTime) async {
     try {
+      if (_rescheduleOriginalDateTime != null) {
+        final diff =
+            selectedDateTime.difference(_rescheduleOriginalDateTime!).abs();
+        if (diff.inMinutes < 1) return true;
+      }
       debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
       debugPrint('Data/Hora: $selectedDateTime');
 
@@ -1002,6 +1072,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         // Se estamos reagendando, ignorar o próprio agendamento.
         if (widget.rescheduleAppointmentId != null &&
             doc.id == widget.rescheduleAppointmentId) {
+          continue;
+        }
+        // Se for o pending do fluxo de pagamento atual, ignorar.
+        if (_currentPaymentAppointmentId != null &&
+            doc.id == _currentPaymentAppointmentId) {
           continue;
         }
 
@@ -1043,6 +1118,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   /// Lança exceção se já existe um agendamento confirmado no mesmo horário
   Future<void> _checkTimeSlotAvailability(DateTime dateTime) async {
     try {
+      if (_rescheduleOriginalDateTime != null) {
+        final diff = dateTime.difference(_rescheduleOriginalDateTime!).abs();
+        if (diff.inMinutes < 1) return;
+      }
       debugPrint('=== DEBUG: Verificando disponibilidade do horário ===');
       debugPrint('Horário selecionado: ${dateTime.toString()}');
       debugPrint(
@@ -1078,6 +1157,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         if (widget.rescheduleAppointmentId != null &&
             doc.id == widget.rescheduleAppointmentId) {
           debugPrint('Excluindo agendamento que está sendo reagendado');
+          return false;
+        }
+
+        // Se for o pending do fluxo de pagamento atual, excluir.
+        if (_currentPaymentAppointmentId != null &&
+            doc.id == _currentPaymentAppointmentId) {
+          debugPrint('Excluindo pending do fluxo de pagamento atual');
           return false;
         }
 
@@ -1295,6 +1381,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
             doc.id == widget.rescheduleAppointmentId) {
           continue;
         }
+        // Se acabamos de criar um agendamento "pending" para pagamento, não
+        // bloquear o próprio horário ao voltar para esta tela.
+        if (_currentPaymentAppointmentId != null &&
+            doc.id == _currentPaymentAppointmentId) {
+          continue;
+        }
 
         final data = doc.data();
         final status = data['status'] as String?;
@@ -1379,12 +1471,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     } catch (e) {
       debugPrint('Error loading cars: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao carregar carros: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao carregar carros.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -1526,53 +1622,23 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         // Se não há saldo, agendar e redirecionar para pagamento
         debugPrint(
             '=== DEBUG: Não há saldo - agendando e redirecionando para pagamento ===');
-        final appointmentId = await _proceedWithSchedulingAndGetId();
-        debugPrint('=== DEBUG: AppointmentId obtido: $appointmentId ===');
-
-        if (appointmentId != null && mounted) {
-          debugPrint('=== DEBUG: Redirecionando para tela de pagamento ===');
-          debugPrint('Valor total: R\$ ${totalAmount.toStringAsFixed(2)}');
-
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PaymentScreen(
-                amount: totalAmount,
-                serviceTitle: _serviceTitles,
-                serviceDescription: (widget.services
-                            .map((s) => (s['description'] as String?)?.trim())
-                            .whereType<String>()
-                            .where((d) => d.isNotEmpty)
-                            .join(', ')
-                            .trim())
-                        .isNotEmpty
-                    ? widget.services
-                        .map((s) => (s['description'] as String?)?.trim())
-                        .whereType<String>()
-                        .where((d) => d.isNotEmpty)
-                        .join(', ')
-                    : _serviceTitles,
-                carId: _selectedCar!['id'],
-                carModel: _selectedCar!['model'],
-                carPlate: _selectedCar!['plate'],
-                appointmentId: appointmentId,
-              ),
-            ),
-          );
-        } else {
-          debugPrint(
-              '=== DEBUG: Erro - AppointmentId é null ou widget não está montado ===');
-        }
+        // OBS: o redirecionamento para pagamento já é feito dentro de
+        // `_proceedWithSchedulingAndGetId()` quando necessário.
+        await _proceedWithSchedulingAndGetId();
       }
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao verificar saldo: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao verificar saldo.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -1929,9 +1995,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
             'Valor usado do saldo: R\$ ${clampedBalance.toStringAsFixed(2)}');
 
         if (mounted) {
-          Navigator.push(
+          _currentPaymentAppointmentId = appointmentId;
+          await Navigator.push(
             context,
             MaterialPageRoute(
+              settings: const RouteSettings(name: 'payment'),
               builder: (context) => PaymentScreen(
                 amount: remainingAmount,
                 serviceTitle: _serviceTitles,
@@ -1957,6 +2025,11 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               ),
             ),
           );
+          // Se esta tela foi aberta via "Reagendar" (histórico), ao voltar do pagamento
+          // devemos retornar ao histórico, não permanecer no agendamento.
+          if (mounted && widget.rescheduleAppointmentId != null) {
+            Navigator.of(context).pop();
+          }
         }
       } else if (appointmentId != null) {
         // Se não há valor restante (saldo cobre tudo), processar o pagamento completo com saldo
@@ -1964,6 +2037,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         debugPrint(
             'Valor usado do saldo: R\$ ${clampedBalance.toStringAsFixed(2)}');
 
+        _currentPaymentAppointmentId = null;
         await _processBalancePayment(clampedBalance, appointmentId);
         if (mounted) {
           _showSuccessDialog();
@@ -1972,12 +2046,16 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao usar saldo: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao usar saldo.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -2038,6 +2116,29 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   Future<String?> _proceedWithSchedulingAndGetId(
       {bool skipPaymentRedirect = false}) async {
     try {
+      // Se já existe um agendamento pending anterior do fluxo de pagamento,
+      // cancela para não manter o horário antigo bloqueado ao trocar de horário.
+      if (_currentPaymentAppointmentId != null) {
+        try {
+          final prevId = _currentPaymentAppointmentId!;
+          final ref =
+              FirebaseFirestore.instance.collection('appointments').doc(prevId);
+          final snap = await ref.get();
+          final status = snap.data()?['status']?.toString();
+          if (status == 'pending') {
+            await ref.update({
+              'status': 'cancelled',
+              'cancelReason': 'payment_replaced',
+              'cancelledAt': FieldValue.serverTimestamp(),
+            });
+          }
+        } catch (e) {
+          debugPrint('Falha ao cancelar pending anterior: $e');
+        } finally {
+          _currentPaymentAppointmentId = null;
+        }
+      }
+
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw ('Usuário não autenticado');
 
@@ -2107,6 +2208,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         'status': appointmentStatus,
         'amount': totalAmount > 0 ? totalAmount : null,
         'createdAt': FieldValue.serverTimestamp(),
+        if (widget.rescheduleAppointmentId != null)
+          'rescheduledFrom': widget.rescheduleAppointmentId,
+        if (widget.rescheduleSessionId != null)
+          'rescheduleSessionId': widget.rescheduleSessionId,
       };
 
       // Adicionar opcionais se existirem
@@ -2124,7 +2229,13 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
         await FirebaseFirestore.instance
             .collection('appointments')
             .doc(widget.rescheduleAppointmentId)
-            .update({'status': 'cancelled'});
+            .update({
+          'status': 'cancelled',
+          'cancelReason': 'rescheduled',
+          'cancelledAt': FieldValue.serverTimestamp(),
+          if (widget.rescheduleSessionId != null)
+            'rescheduleSessionId': widget.rescheduleSessionId,
+        });
 
         debugPrint('=== DEBUG: Agendamento anterior cancelado com sucesso ===');
       }
@@ -2137,6 +2248,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       debugPrint('ID do agendamento: ${docRef.id}');
 
       if (mounted) {
+        // Se este agendamento vai para pagamento, não bloquear o próprio horário
+        // quando o usuário voltar para esta tela.
+        if (!skipPaymentRedirect && _hasServicesWithPrice() && totalAmount > 0) {
+          _currentPaymentAppointmentId = docRef.id;
+        }
+
         // Recarregar horários ocupados após criar o agendamento
         await _loadBookedTimeSlots();
 
@@ -2152,9 +2269,10 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               '=== DEBUG: Serviço com valor - redirecionando para pagamento ===');
           debugPrint('Valor total: R\$ ${totalAmount.toStringAsFixed(2)}');
 
-          Navigator.push(
+          await Navigator.push(
             context,
             MaterialPageRoute(
+              settings: const RouteSettings(name: 'payment'),
               builder: (context) => PaymentScreen(
                 amount: totalAmount,
                 serviceTitle: _serviceTitles,
@@ -2178,6 +2296,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
               ),
             ),
           );
+          if (mounted && widget.rescheduleAppointmentId != null) {
+            Navigator.of(context).pop();
+          }
         } else {
           debugPrint('=== DEBUG: Pular redirecionamento para pagamento ===');
         }
@@ -2188,12 +2309,32 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     } catch (e) {
       debugPrint('Error scheduling service: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao agendar: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          String? message;
+          if (e is String) {
+            final s = e.trim();
+            final isBusinessMessage =
+                s.startsWith('Você já possui um agendamento pendente') ||
+                    s.contains('agendamento pendente') ||
+                    s.startsWith('Horário não disponível') ||
+                    s.startsWith('Data/horário inválido') ||
+                    s.startsWith('Usuário não autenticado') ||
+                    s.startsWith('Saldo insuficiente');
+            if (isBusinessMessage) {
+              message = s;
+            }
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message ?? 'Erro ao agendar.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) {

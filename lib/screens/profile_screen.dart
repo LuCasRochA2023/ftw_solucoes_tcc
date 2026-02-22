@@ -16,6 +16,8 @@ import '../utils/error_handler.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:ftw_solucoes/utils/validation_utils.dart';
+import '../utils/network_feedback.dart';
+import 'package:ftw_solucoes/services/connectivity_events.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AuthService authService;
@@ -38,6 +40,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _cepFieldKey = GlobalKey<FormFieldState<String>>();
   final _streetFieldKey = GlobalKey<FormFieldState<String>>();
   final _numberFieldKey = GlobalKey<FormFieldState<String>>();
+  StreamSubscription<void>? _onlineSub;
   final _neighborhoodFieldKey = GlobalKey<FormFieldState<String>>();
   final _cityFieldKey = GlobalKey<FormFieldState<String>>();
   final _stateFieldKey = GlobalKey<FormFieldState<String>>();
@@ -114,6 +117,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _loadUserData();
     _loadCurrentPhoto();
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      _loadUserData();
+      _loadCurrentPhoto();
+    });
     _cepFocusNode.addListener(_onCepFocusChanged);
     _authStateSubscription =
         FirebaseAuth.instance.authStateChanges().listen((User? user) {
@@ -159,9 +166,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao carregar dados: $e')),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao carregar dados.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -296,10 +310,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _isImageLoading = false;
             });
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
+              const SnackBar(
                 content: Text('Erro ao processar imagem. Tente novamente.'),
                 backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
+                duration: Duration(seconds: 3),
               ),
             );
           }
@@ -312,10 +326,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _isImageLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text('Erro ao selecionar imagem. Tente novamente.'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -639,6 +653,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    _onlineSub?.cancel();
     _authStateSubscription?.cancel();
     _cepFocusNode.dispose();
     _scrollController.dispose();
@@ -798,7 +813,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.white,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: 10,
                             offset: const Offset(0, -5),
                           ),

@@ -4,6 +4,7 @@ import 'package:ftw_solucoes/screens/register_screen.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
 import 'package:ftw_solucoes/utils/error_handler.dart';
+import 'package:ftw_solucoes/utils/network_feedback.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -38,6 +39,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Se estiver sem internet, já mostra o erro ao clicar.
+    final online = await NetworkFeedback.hasInternet();
+    if (!online) {
+      if (!mounted) return;
+      NetworkFeedback.showConnectionSnackBar(context);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -58,13 +67,17 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -96,6 +109,14 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isResettingPassword = true);
 
     try {
+      // Se estiver sem internet, já mostra o erro ao clicar.
+      final online = await NetworkFeedback.hasInternet();
+      if (!online) {
+        if (!mounted) return;
+        NetworkFeedback.showConnectionSnackBar(context);
+        return;
+      }
+
       await widget.authService.sendPasswordResetEmail(email);
 
       if (!mounted) return;
@@ -110,13 +131,17 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ErrorHandler.getPasswordResetErrorMessage(e)),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.getPasswordResetErrorMessage(e)),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isResettingPassword = false);
     }

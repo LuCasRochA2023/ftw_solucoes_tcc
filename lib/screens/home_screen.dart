@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/screens/about_screen.dart';
 import 'package:ftw_solucoes/screens/settings_screen.dart';
@@ -10,6 +12,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
 import 'package:ftw_solucoes/screens/balance_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
+import 'package:ftw_solucoes/services/connectivity_events.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -24,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = '';
   String? _photoUrl;
   bool _snackbarShown = false;
+  bool _isLoadingUserData = false;
+  StreamSubscription<void>? _onlineSub;
 
   bool get _isGuest =>
       widget.authService.currentUser == null ||
@@ -33,23 +38,32 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      _loadUserData();
+    });
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadUserData();
+  void dispose() {
+    _onlineSub?.cancel();
+    super.dispose();
   }
 
-  Future<void> _loadUserData() async {
+  Future<bool> _loadUserData() async {
+    if (_isLoadingUserData) return false;
+    if (mounted) {
+      setState(() {
+        _isLoadingUserData = true;
+      });
+    }
     try {
       final user = widget.authService.currentUser;
-      if (user == null) return;
+      if (user == null) return false;
 
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (userDoc.exists) {
         final data = userDoc.data() as Map<String, dynamic>;
@@ -86,18 +100,30 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           });
         }
+        return true;
       } else {
         debugPrint('Documento do usuário não encontrado');
+        return true;
       }
     } catch (e) {
       debugPrint('Erro ao carregar dados do usuário: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erro ao carregar dados do usuário: $e'),
+            content: Text(
+              'Erro ao conectar. Tente novamente.',
+              style: GoogleFonts.poppins(),
+            ),
             backgroundColor: Colors.red,
           ),
         );
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingUserData = false;
+        });
       }
     }
   }
@@ -404,6 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
+                        settings: const RouteSettings(name: 'history'),
                         builder: (context) => ServiceHistoryScreen(
                             authService: widget.authService),
                       ),

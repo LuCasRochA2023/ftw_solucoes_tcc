@@ -3,6 +3,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
+import '../utils/network_feedback.dart';
+import '../services/connectivity_events.dart';
+import 'dart:async';
 
 class BalanceScreen extends StatefulWidget {
   final AuthService authService;
@@ -19,11 +22,21 @@ class BalanceScreen extends StatefulWidget {
 class _BalanceScreenState extends State<BalanceScreen> {
   double _balance = 0.0;
   bool _isLoading = true;
+  StreamSubscription<void>? _onlineSub;
 
   @override
   void initState() {
     super.initState();
     _loadBalance();
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      _loadBalance();
+    });
+  }
+
+  @override
+  void dispose() {
+    _onlineSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadBalance() async {
@@ -50,6 +63,9 @@ class _BalanceScreenState extends State<BalanceScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao carregar saldo: $e');
+      if (mounted && NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      }
       setState(() {
         _isLoading = false;
       });

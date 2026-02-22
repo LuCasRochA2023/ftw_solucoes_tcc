@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/network_feedback.dart';
 import 'package:intl/intl.dart';
 import 'schedule_service_screen.dart';
 import '../services/auth_service.dart';
+import '../services/connectivity_events.dart';
+import 'dart:async';
+import 'package:uuid/uuid.dart';
 
 class ServiceHistoryScreen extends StatefulWidget {
   final AuthService authService;
@@ -24,11 +28,21 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _appointments = [];
   String? _error;
+  StreamSubscription<void>? _onlineSub;
 
   @override
   void initState() {
     super.initState();
     _loadAppointments();
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      _loadAppointments();
+    });
+  }
+
+  @override
+  void dispose() {
+    _onlineSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -152,7 +166,9 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
       debugPrint('=== DEBUG: Erro ao carregar agendamentos: $e ===');
       if (mounted) {
         setState(() {
-          _error = 'Erro ao carregar histórico: $e';
+          _error = NetworkFeedback.isConnectionError(e)
+              ? NetworkFeedback.connectionMessage
+              : 'Erro ao carregar histórico.';
           _isLoading = false;
         });
       }
@@ -255,12 +271,16 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     } catch (e) {
       debugPrint('Erro ao cancelar agendamento: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao cancelar agendamento: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao cancelar agendamento.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -287,6 +307,7 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
   Future<void> _rescheduleAppointment(Map<String, dynamic> appointment) async {
     final appointmentId = appointment['id'] as String?;
     if (appointmentId == null) return;
+    final rescheduleSessionId = const Uuid().v4();
 
     final services = _buildServicesForReschedule(appointment);
     if (services.isEmpty) {
@@ -303,6 +324,43 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     }
 
     if (!mounted) return;
+
+    // Ao clicar em "Reagendar", já cancela o agendamento atual e mantém no histórico.
+    // (não deleta o documento; apenas marca status/campos de auditoria)
+    try {
+      await _firestore.collection('appointments').doc(appointmentId).update({
+        'status': 'cancelled',
+        'cancelReason': 'rescheduled',
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'rescheduleSessionId': rescheduleSessionId,
+      });
+
+      // Atualiza o estado local imediatamente para refletir no histórico.
+      final idx =
+          _appointments.indexWhere((a) => (a['id'] as String?) == appointmentId);
+      if (idx != -1) {
+        setState(() {
+          _appointments[idx]['status'] = 'cancelled';
+          _appointments[idx]['cancelReason'] = 'rescheduled';
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao cancelar para reagendamento: $e');
+      if (mounted) {
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Não foi possível iniciar o reagendamento.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -310,9 +368,46 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
           services: services,
           authService: widget.authService,
           rescheduleAppointmentId: appointmentId,
+          rescheduleSessionId: rescheduleSessionId,
         ),
       ),
     );
+
+    // Se o usuário voltou da tela de reagendar sem concluir, restaura o agendamento
+    // antigo para pending (não deixa ele como cancelado).
+    try {
+      final qs = await _firestore
+          .collection('appointments')
+          .where('rescheduleSessionId', isEqualTo: rescheduleSessionId)
+          .get();
+
+      final hasActiveReplacement = qs.docs.any((d) {
+        final data = d.data();
+        final from = data['rescheduledFrom']?.toString();
+        final status = data['status']?.toString();
+        return from == appointmentId && status != 'cancelled';
+      });
+
+      if (!hasActiveReplacement) {
+        await _firestore.collection('appointments').doc(appointmentId).update({
+          'status': 'pending',
+          'cancelReason': FieldValue.delete(),
+          'cancelledAt': FieldValue.delete(),
+          'rescheduleSessionId': FieldValue.delete(),
+        });
+
+        final idx = _appointments
+            .indexWhere((a) => (a['id'] as String?) == appointmentId);
+        if (idx != -1 && mounted) {
+          setState(() {
+            _appointments[idx]['status'] = 'pending';
+            _appointments[idx].remove('cancelReason');
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao restaurar agendamento após voltar do reagendar: $e');
+    }
 
     // Atualizar lista após voltar do reagendamento
     await _loadAppointments();
@@ -358,12 +453,16 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     } catch (e) {
       debugPrint('Erro ao excluir agendamento: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao excluir agendamento: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao excluir agendamento.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -416,12 +515,16 @@ class _ServiceHistoryScreenState extends State<ServiceHistoryScreen> {
     } catch (e) {
       debugPrint('Erro ao excluir agendamentos cancelados: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao excluir agendamentos cancelados: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        if (NetworkFeedback.isConnectionError(e)) {
+          NetworkFeedback.showConnectionSnackBar(context);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erro ao excluir agendamentos cancelados.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }

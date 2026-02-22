@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/utils/validation_utils.dart';
 import 'package:ftw_solucoes/utils/error_handler.dart';
+import 'package:ftw_solucoes/utils/network_feedback.dart';
 
 class RegisterScreen extends StatefulWidget {
   final AuthService authService;
@@ -41,6 +42,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Se estiver sem internet, já mostra o erro ao clicar.
+    final online = await NetworkFeedback.hasInternet();
+    if (!online) {
+      if (!mounted) return;
+      NetworkFeedback.showConnectionSnackBar(context);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -62,13 +71,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+      if (NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.getFriendlyErrorMessage(e)),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

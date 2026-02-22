@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
+import '../utils/network_feedback.dart';
 
 class CarsScreen extends StatefulWidget {
   final FirebaseFirestore? firestore;
@@ -53,7 +54,7 @@ class _CarsScreenState extends State<CarsScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao selecionar imagem: $e');
-      _showErrorMessage('Erro ao selecionar imagem: $e');
+      _showErrorMessage('Erro ao selecionar imagem.');
     }
   }
 
@@ -86,7 +87,11 @@ class _CarsScreenState extends State<CarsScreen> {
       return await storageRef.getDownloadURL();
     } catch (e) {
       debugPrint('Erro ao fazer upload da imagem: $e');
-      _showErrorMessage('Erro ao fazer upload da imagem: $e');
+      if (mounted && NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      } else {
+        _showErrorMessage('Erro ao fazer upload da imagem.');
+      }
       return null;
     }
   }
@@ -152,8 +157,12 @@ class _CarsScreenState extends State<CarsScreen> {
       debugPrint('StackTrace: $stackTrace');
       
       if (!mounted) return;
-      
-      _showErrorMessage('Erro ao salvar carro: $e');
+
+      if (NetworkFeedback.isConnectionError(e)) {
+        NetworkFeedback.showConnectionSnackBar(context);
+      } else {
+        _showErrorMessage('Erro ao salvar carro.');
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);

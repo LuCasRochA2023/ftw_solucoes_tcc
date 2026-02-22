@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'screens/home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'services/auth_service.dart';
+import 'widgets/offline_bottom_banner.dart';
 
 Future<void> initializeFirebase() async {
   try {
@@ -86,6 +87,10 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        if (child == null) return const SizedBox.shrink();
+        return OfflineBottomBanner(child: child);
+      },
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,

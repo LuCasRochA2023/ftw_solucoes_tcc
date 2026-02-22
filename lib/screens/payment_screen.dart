@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'package:http/http.dart' as http;
-import 'package:ftw_solucoes/screens/profile_screen.dart';
 import 'package:ftw_solucoes/screens/login_screen.dart';
 import 'package:ftw_solucoes/screens/register_screen.dart';
 import '../services/auth_service.dart';
@@ -17,6 +16,8 @@ import '../utils/backend_url.dart';
 import '../utils/environment_config.dart';
 import '../utils/mp_device_session/mp_device_session.dart';
 import '../utils/mp_device_session/mp_device_session_mobile.dart';
+import '../utils/network_feedback.dart';
+import '../services/connectivity_events.dart';
 
 class PaymentScreen extends StatefulWidget {
   final double amount;
@@ -27,6 +28,7 @@ class PaymentScreen extends StatefulWidget {
   final String carPlate;
   final String appointmentId;
   final double? balanceToUse;
+  final String? returnToRouteName;
 
   const PaymentScreen({
     Key? key,
@@ -38,6 +40,7 @@ class PaymentScreen extends StatefulWidget {
     required this.carPlate,
     required this.appointmentId,
     this.balanceToUse,
+    this.returnToRouteName,
   }) : super(key: key);
 
   @override
@@ -57,6 +60,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
   int _selectedTab = 0; // 0 = Pix, 1 = Cartão (desabilitado se _enableCardPayment=false)
   bool _isInitialized = false; // Flag para evitar inicialização duplicada
   bool _isDisposed = false; // Flag para controlar se a tela foi descartada
+  StreamSubscription<void>? _onlineSub;
+
+  Future<void> _ensureAppointmentIsPending() async {
+    try {
+      if (widget.appointmentId.trim().isEmpty) return;
+      final ref = FirebaseFirestore.instance
+          .collection('appointments')
+          .doc(widget.appointmentId.trim());
+      final snap = await ref.get();
+      final status = snap.data()?['status']?.toString();
+      // Não sobrescrever estados finais/administrativos.
+      if (status == 'confirmed' || status == 'cancelled' || status == 'completed') {
+        return;
+      }
+      if (status != 'pending') {
+        await ref.update({'status': 'pending'});
+      }
+    } catch (e) {
+      debugPrint('Erro ao garantir status pending do agendamento: $e');
+    }
+  }
+
   bool _walletDebitProcessed = false; // Evita debitar saldo 2x no mesmo fluxo
 
   // Campos do formulário de cartão
@@ -115,10 +140,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final raw = (v ?? '').trim();
     if (raw.isEmpty) return 'Informe o número do cartão';
     final digits = _onlyDigits(raw);
-    if (digits.length < 13 || digits.length > 19)
+    if (digits.length < 13 || digits.length > 19) {
       return 'Número do cartão inválido';
-    if (RegExp(r'^(\d)\1+$').hasMatch(digits))
+    }
+    if (RegExp(r'^(\d)\1+$').hasMatch(digits)) {
       return 'Número do cartão inválido';
+    }
     if (!_isValidLuhn(digits)) return 'Número do cartão inválido';
     return null;
   }
@@ -126,8 +153,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String? _validateExpiry(String? v) {
     final raw = (v ?? '').trim();
     if (raw.isEmpty) return 'Informe a validade (MM/AA)';
-    if (!RegExp(r'^\d{2}/\d{2}$').hasMatch(raw))
+    if (!RegExp(r'^\d{2}/\d{2}$').hasMatch(raw)) {
       return 'Validade inválida (use MM/AA)';
+    }
     final parts = raw.split('/');
     final month = int.tryParse(parts[0]);
     final year2 = int.tryParse(parts[1]);
@@ -210,11 +238,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
   String _buildItemId() {
     // Ex.: "lavagem_001"
     final t = widget.serviceTitle.toLowerCase();
-    if (t.contains('lavagem') && t.contains('carro comum'))
+    if (t.contains('lavagem') && t.contains('carro comum')) {
       return 'lavagem_001';
+    }
     if (t.contains('lavagem') && t.contains('suv')) return 'lavagem_002';
-    if (t.contains('lavagem') && t.contains('caminhonete'))
+    if (t.contains('lavagem') && t.contains('caminhonete')) {
       return 'lavagem_003';
+    }
     if (t.contains('leva') && t.contains('traz')) return 'leva_traz_001';
 
     // Fallback (nunca vazio)
@@ -298,11 +328,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     debugPrint('=== DEBUG: PaymentScreen initState ===');
+    _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
+      // Quando a internet voltar, retornar para a tela anterior.
+      if (!mounted) return;
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+    });
     // Inicializar imediatamente sem delay
     // Gera MP_DEVICE_SESSION_ID no mobile via WebView invisível (requisito do MP).
     unawaited(_ensureDeviceSessionIdMobile());
     _initializePayment();
   }
+
+  // O destino do "voltar" é decidido pela tela anterior (ex.: reagendar volta ao histórico).
 
   Future<bool> _ensureRegisteredForPayment() async {
     final current = FirebaseAuth.instance.currentUser;
@@ -378,6 +417,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return;
     }
 
+    // Garantir que existe um agendamento pendente associado ao pagamento.
+    await _ensureAppointmentIsPending();
+
     // Primeiro carregar o CPF, depois criar o pagamento
     await _loadUserCpf();
     await _criarPagamentoPix();
@@ -388,6 +430,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void dispose() {
     _isDisposed = true;
     _statusTimer?.cancel();
+    _onlineSub?.cancel();
     _cardNumberController.dispose();
     _expiryController.dispose();
     _cvvController.dispose();
@@ -1125,66 +1168,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         title: const Text('Pagamento'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // Se há saldo sendo usado, mostrar confirmação
-            if (widget.balanceToUse != null && widget.balanceToUse! > 0) {
-              final navigatorContext = context;
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Cancelar Pagamento'),
-                  content: Text(
-                      'Você está usando R\$ ${widget.balanceToUse!.toStringAsFixed(2)} do seu saldo. '
-                      'Se cancelar agora, você voltará para a tela inicial. O agendamento permanecerá ativo e o saldo não será alterado. '
-                      'Deseja continuar?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Continuar Pagamento'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        debugPrint(
-                            '=== DEBUG: Botão Voltar ao Início pressionado ===');
-
-                        // Fechar dialog primeiro
-                        Navigator.pop(context);
-                        debugPrint('=== DEBUG: Dialog fechado ===');
-
-                        // Apenas voltar para tela inicial, sem cancelar agendamento
-                        debugPrint(
-                            '=== DEBUG: Voltando para tela inicial sem cancelar ===');
-
-                        // Voltar para tela inicial
-                        if (mounted) {
-                          debugPrint(
-                              '=== DEBUG: Tentando voltar para tela inicial ===');
-                          Navigator.pushAndRemoveUntil(
-                            navigatorContext,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  HomeScreen(authService: AuthService()),
-                            ),
-                            (route) =>
-                                false, // Remove todas as rotas anteriores
-                          );
-                          debugPrint(
-                              '=== DEBUG: Navegação para tela inicial executada ===');
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Voltar ao Início'),
-                    ),
-                  ],
-                ),
-              );
-            } else {
-              // Se não há saldo, voltar normalmente
-              Navigator.pop(context);
-            }
+          onPressed: () async {
+            if (!mounted) return;
+            Navigator.of(context).pop();
           },
         ),
       ),
@@ -1418,87 +1404,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              // Aviso se CPF não encontrado
-              if (_userCpf == null || _userCpf!.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.orange[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange[200]!),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.info_outline,
-                            color: Colors.orange,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'CPF não encontrado no perfil. Atualize seu perfil para usar seu CPF real.',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.orange[700],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Column(
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ProfileScreen(
-                                        authService: AuthService()),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.person),
-                              label: const Text('Ir ao Perfil'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange[600],
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () {
-                                _criarPagamentoPix();
-                              },
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Tentar PIX'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green[600],
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                              ),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),
@@ -1809,44 +1714,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           ),
                         ],
                       ),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.orange[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.orange[300]!),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning, color: Colors.orange[600]),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'CPF não encontrado',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.orange[700],
-                                  ),
-                                ),
-                                Text(
-                                  'Atualize seu perfil para incluir o CPF',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.orange[600],
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                 ],
               ),
@@ -1991,7 +1858,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
                               await pagarComCartao(cardToken);
                             } catch (e) {
                               setState(() {
-                                _cardError = 'Erro ao processar pagamento: $e';
+                                _cardError = NetworkFeedback.isConnectionError(e)
+                                    ? NetworkFeedback.connectionMessage
+                                    : 'Erro ao processar pagamento.';
                               });
                             } finally {
                               setState(() {
