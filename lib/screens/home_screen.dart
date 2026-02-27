@@ -3,16 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ftw_solucoes/screens/about_screen.dart';
 import 'package:ftw_solucoes/screens/settings_screen.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
 import 'package:ftw_solucoes/screens/my_cars_screen.dart';
 import 'package:ftw_solucoes/screens/available_services_screen.dart';
+import 'package:ftw_solucoes/screens/login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
 import 'package:ftw_solucoes/screens/balance_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
-import 'package:ftw_solucoes/services/connectivity_events.dart';
+import 'package:ftw_solucoes/services/auth/connectivity_events.dart';
 
 class HomeScreen extends StatefulWidget {
   final AuthService authService;
@@ -184,6 +185,19 @@ class _HomeScreenState extends State<HomeScreen> {
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: _handleLogout,
+            ),
+          if (isGuest)
+            IconButton(
+              icon: const Icon(Icons.login_rounded),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        LoginScreen(authService: widget.authService),
+                  ),
+                );
+              },
             ),
         ],
       ),
@@ -379,12 +393,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Colors.blueAccent,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
-                      decoration: TextDecoration.underline,
                       letterSpacing: 1.2,
                       shadows: [
                         Shadow(
                           color: Colors.blue
-                              .withValues(alpha: (255 * 0.5).toDouble()),
+                              .withValues(alpha: (255 * 0.2).toDouble()),
                           offset: const Offset(0, 2),
                           blurRadius: 6,
                         ),

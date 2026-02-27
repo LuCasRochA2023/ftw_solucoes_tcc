@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/auth_service.dart';
+import '../services/auth/auth_service.dart';
 import '../utils/network_feedback.dart';
-import '../services/connectivity_events.dart';
+import '../services/auth/connectivity_events.dart';
 import 'dart:async';
 
 class BalanceScreen extends StatefulWidget {

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/utils/validation_utils.dart';

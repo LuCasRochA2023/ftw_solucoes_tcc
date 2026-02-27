@@ -28,6 +28,20 @@
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
 		};
+		AA06BB542F4B99AE001B1028 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AAB9840F2F34028D000F407A /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 6D3FD4746C5C4B5292B7C4C862F01EF9;
+			remoteInfo = connectivity_plus;
+		};
+		AA06BB562F4B99AE001B1028 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AAB9840F2F34028D000F407A /* Pods.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 497F2B75C867D2399270877559788776;
+			remoteInfo = "connectivity_plus-connectivity_plus_privacy";
+		};
 		AAB9855E2F3402B0000F407A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = AAB9840F2F34028D000F407A /* Pods.xcodeproj */;
@@ -711,6 +725,8 @@
 				AAB985652F3402B0000F407A /* openssl_grpc.framework */,
 				AAB985672F3402B0000F407A /* openssl_grpc.bundle */,
 				AAB985692F3402B0000F407A /* cloud_firestore.framework */,
+				AA06BB552F4B99AE001B1028 /* connectivity_plus.framework */,
+				AA06BB572F4B99AE001B1028 /* connectivity_plus_privacy.bundle */,
 				AAB9856B2F3402B0000F407A /* firebase_app_check.framework */,
 				AAB9856D2F3402B0000F407A /* firebase_auth.framework */,
 				AAB9856F2F3402B0000F407A /* firebase_core.framework */,
@@ -900,6 +916,20 @@
 /* End PBXProject section */
 
 /* Begin PBXReferenceProxy section */
+		AA06BB552F4B99AE001B1028 /* connectivity_plus.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = connectivity_plus.framework;
+			remoteRef = AA06BB542F4B99AE001B1028 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		AA06BB572F4B99AE001B1028 /* connectivity_plus_privacy.bundle */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = connectivity_plus_privacy.bundle;
+			remoteRef = AA06BB562F4B99AE001B1028 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 		AAB9855F2F3402B0000F407A /* absl.framework */ = {
 			isa = PBXReferenceProxy;
 			fileType = wrapper.framework;
@@ -1686,7 +1716,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = FWFC3CBLP9;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = FWFC3CBLP9;
 				ENABLE_BITCODE = NO;
@@ -1696,6 +1726,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.ftwsolucoes.ftw-solucoes";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = Lucas;
@@ -1894,7 +1925,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = FWFC3CBLP9;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = FWFC3CBLP9;
 				ENABLE_BITCODE = NO;
@@ -1904,6 +1935,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0.2;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.ftwsolucoes.ftw-solucoes";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = Lucas;
@@ -1931,7 +1963,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				CURRENT_PROJECT_VERSION = 25;
 				DEVELOPMENT_TEAM = FWFC3CBLP9;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = FWFC3CBLP9;
 				ENABLE_BITCODE = NO;
@@ -1941,6 +1973,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1.0.2;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.ftwsolucoes.ftw-solucoes";
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 import 'package:ftw_solucoes/screens/schedule_service_screen.dart';
-import 'package:ftw_solucoes/services/distance_service.dart';
+import 'package:ftw_solucoes/services/geo/distance_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/network_feedback.dart';
-import '../services/connectivity_events.dart';
+import '../services/auth/connectivity_events.dart';
 import 'dart:async';
 
 class AvailableServicesScreen extends StatefulWidget {

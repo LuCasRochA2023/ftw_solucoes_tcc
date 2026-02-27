@@ -9,7 +9,7 @@ import 'dart:typed_data' as _i8;
 import 'package:cloud_firestore/cloud_firestore.dart' as _i4;
 import 'package:firebase_auth/firebase_auth.dart' as _i2;
 import 'package:firebase_core/firebase_core.dart' as _i3;
-import 'package:ftw_solucoes/services/auth_service.dart' as _i6;
+import 'package:ftw_solucoes/services/auth/auth_service.dart' as _i6;
 import 'package:mockito/mockito.dart' as _i1;
 import 'package:mockito/src/dummies.dart' as _i7;
 
@@ -748,7 +748,6 @@ class MockFirebaseFirestore extends _i1.Mock implements _i4.FirebaseFirestore {
 /// A class which mocks [CollectionReference].
 ///
 /// See the documentation for Mockito's code generation for more information.
-// ignore: must_be_immutable
 class MockCollectionReference<T extends Object?> extends _i1.Mock
     implements _i4.CollectionReference<T> {
   MockCollectionReference() {

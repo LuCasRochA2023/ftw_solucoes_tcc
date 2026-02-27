@@ -27,7 +27,7 @@ class MpDeviceSessionMobile {
     _isStarting = true;
     try {
       // HTML mínimo: carrega security.js e expõe MP_DEVICE_SESSION_ID no window.
-      final html = '''
+      const html = '''
 <!DOCTYPE html>
 <html>
   <head>

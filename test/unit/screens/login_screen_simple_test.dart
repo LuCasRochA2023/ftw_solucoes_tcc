@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mockito/mockito.dart';
 import 'package:mockito/annotations.dart';
 import 'package:ftw_solucoes/screens/login_screen.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 
 // Gerar mocks
 @GenerateMocks([AuthService])

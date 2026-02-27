@@ -3,7 +3,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/network_feedback.dart';
-import '../services/connectivity_events.dart';
+import '../services/auth/connectivity_events.dart';
 
 /// Banner global para indicar ausência de internet.
 ///

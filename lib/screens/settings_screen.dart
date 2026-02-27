@@ -5,7 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:ftw_solucoes/screens/profile_screen.dart';
 import 'package:ftw_solucoes/screens/change_password_screen.dart';
 import 'package:ftw_solucoes/screens/service_history_screen.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AuthService authService;

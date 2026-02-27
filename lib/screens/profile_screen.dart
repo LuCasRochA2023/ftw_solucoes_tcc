@@ -8,7 +8,7 @@ import 'package:dio/dio.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:image_picker/image_picker.dart';
-import '../services/auth_service.dart';
+import '../services/auth/auth_service.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -17,7 +17,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:ftw_solucoes/utils/validation_utils.dart';
 import '../utils/network_feedback.dart';
-import 'package:ftw_solucoes/services/connectivity_events.dart';
+import 'package:ftw_solucoes/services/auth/connectivity_events.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AuthService authService;

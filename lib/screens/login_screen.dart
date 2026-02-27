@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ftw_solucoes/services/auth_service.dart';
+import 'package:ftw_solucoes/services/auth/auth_service.dart';
 import 'package:ftw_solucoes/screens/register_screen.dart';
 import 'package:ftw_solucoes/screens/home_screen.dart';
 import 'package:ftw_solucoes/widgets/ftw_logo.dart';
@@ -299,8 +299,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
                     const SizedBox(height: 16),
-
-                    // Esqueci minha senha
+                    Center(
+                      child: TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  HomeScreen(authService: widget.authService),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          'Entrar como convidado',
+                          style: GoogleFonts.poppins(
+                            color: Colors.blue,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ), // Esqueci minha senha
                     Center(
                       child: TextButton(
                         onPressed:
@@ -322,6 +341,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                       ),
                     ),
+
                     const SizedBox(height: 24),
 
                     // Login button

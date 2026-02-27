@@ -5,8 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../utils/network_feedback.dart';
 import 'package:intl/intl.dart';
 import 'schedule_service_screen.dart';
-import '../services/auth_service.dart';
-import '../services/connectivity_events.dart';
+import '../services/auth/auth_service.dart';
+import '../services/auth/connectivity_events.dart';
 import 'dart:async';
 import 'package:uuid/uuid.dart';
 

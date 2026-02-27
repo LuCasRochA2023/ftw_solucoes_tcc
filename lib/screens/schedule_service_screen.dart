@@ -6,16 +6,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import '../services/auth_service.dart';
+import '../services/auth/auth_service.dart';
+import '../services/schedule/schedule_appointment_service.dart';
+import '../services/schedule/schedule_availability_service.dart';
+import '../services/schedule/schedule_validation_service.dart';
 import 'payment_screen.dart';
 import 'cars_screen.dart';
 import 'home_screen.dart';
 import 'profile_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
-import '../utils/validation_utils.dart';
+import '../config/schedule_service_config.dart';
 import '../utils/network_feedback.dart';
-import '../services/connectivity_events.dart';
+import '../utils/schedule_date_utils.dart';
+import '../utils/schedule_price_utils.dart';
+import '../services/auth/connectivity_events.dart';
+import '../widgets/schedule/schedule_car_selection_section.dart';
+import '../widgets/schedule/schedule_booking_details_section.dart';
+import '../widgets/schedule/schedule_confirm_button_bar.dart';
 
 class ScheduleServiceScreen extends StatefulWidget {
   final List<Map<String, dynamic>> services;
@@ -38,7 +46,7 @@ class ScheduleServiceScreen extends StatefulWidget {
 class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   // Regra: agendamentos só podem ser feitos a partir do dia seguinte (amanhã).
   // Além disso, mantemos a regra de não permitir domingos/feriados.
-  DateTime _selectedDate = _getMinBookingDate();
+  DateTime _selectedDate = ScheduleDateUtils.getMinBookingDate();
   String? _selectedTime;
   bool _isLoading = false;
   Map<String, String> _bookedTimeSlots = {};
@@ -59,12 +67,6 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     if (e is FirebaseException) return e.code == 'permission-denied';
     return e.toString().contains('permission-denied');
   }
-
-  static bool _isSameDay(DateTime a, DateTime b) {
-    return a.year == b.year && a.month == b.month && a.day == b.day;
-  }
-
-  static const Duration _pendingHoldDuration = Duration(minutes: 30);
 
   Future<void> _expireStalePendingAppointments(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
@@ -89,7 +91,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
       final createdAt = createdAtTs.toDate();
       if (createdAt.isAfter(now)) continue; // clock skew
 
-      if (now.difference(createdAt) > _pendingHoldDuration) {
+      if (now.difference(createdAt) >
+          ScheduleServiceConfig.pendingHoldDuration) {
         staleRefs.add(doc.reference);
       }
     }
@@ -128,7 +131,8 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     final createdAt = createdAtTs.toDate();
     final now = DateTime.now();
     if (createdAt.isAfter(now)) return true; // clock skew / server timestamp
-    return now.difference(createdAt) <= _pendingHoldDuration;
+    return now.difference(createdAt) <=
+        ScheduleServiceConfig.pendingHoldDuration;
   }
 
   bool _isBlockingStatus(Map<String, dynamic> data) {
@@ -141,45 +145,12 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   bool _isSlotInPast(DateTime slotTime) {
     final now = DateTime.now();
     // Só bloqueia "horários passados" quando a data selecionada for hoje.
-    if (!_isSameDay(_selectedDate, now)) return false;
+    if (!ScheduleDateUtils.isSameDay(_selectedDate, now)) return false;
     return slotTime.isBefore(now);
   }
 
   List<String> _getMissingProfileFields(Map<String, dynamic>? userData) {
-    final missing = <String>[];
-    if (userData == null) {
-      return [
-        'nome',
-        'CPF',
-        'telefone',
-        'endereço (CEP, rua, número, bairro, cidade, UF)',
-      ];
-    }
-
-    final name = (userData['name'] as String?)?.trim() ?? '';
-    final cpf = (userData['cpf'] as String?)?.trim() ?? '';
-    final phone = (userData['phone'] as String?)?.trim() ?? '';
-
-    if (!ValidationUtils.isValidName(name)) missing.add('nome completo');
-    if (!ValidationUtils.isValidCpf(cpf)) missing.add('CPF válido');
-    if (!ValidationUtils.isValidPhone(phone)) missing.add('telefone válido');
-
-    final address = userData['address'] as Map<String, dynamic>?;
-    final cep = (address?['cep'] as String?)?.trim() ?? '';
-    final street = (address?['street'] as String?)?.trim() ?? '';
-    final number = (address?['number'] as String?)?.trim() ?? '';
-    final neighborhood = (address?['neighborhood'] as String?)?.trim() ?? '';
-    final city = (address?['city'] as String?)?.trim() ?? '';
-    final state = (address?['state'] as String?)?.trim() ?? '';
-
-    if (!ValidationUtils.isValidCep(cep)) missing.add('CEP válido');
-    if (street.isEmpty) missing.add('rua');
-    if (!ValidationUtils.isValidNumber(number)) missing.add('número');
-    if (neighborhood.isEmpty) missing.add('bairro');
-    if (city.isEmpty) missing.add('cidade');
-    if (!ValidationUtils.isValidState(state)) missing.add('UF');
-
-    return missing;
+    return ScheduleValidationService.getMissingProfileFields(userData);
   }
 
   Future<bool> _ensureProfileComplete() async {
@@ -388,127 +359,34 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Função para obter a próxima data disponível (não domingo e não feriado)
   static DateTime _getNextAvailableDate(DateTime date) {
-    DateTime currentDate = DateTime(date.year, date.month, date.day);
-    while (_isHolidayOrSunday(currentDate)) {
-      currentDate = currentDate.add(const Duration(days: 1));
-    }
-    return currentDate;
+    return ScheduleDateUtils.getNextAvailableDate(date);
   }
 
   // Data mínima para agendamento: amanhã (normalizado) e, se cair em domingo/feriado,
   // pula para o próximo dia disponível.
   static DateTime _getMinBookingDate() {
-    final now = DateTime.now();
-    final tomorrow =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    return _getNextAvailableDate(tomorrow);
+    return ScheduleDateUtils.getMinBookingDate();
   }
 
   // Variável para opcional de cera (apenas uma seleção)
   String? _selectedCera;
 
-  static const List<String> _weekdayDefaultSlots = [
-    '08:00',
-    '09:00',
-    '10:00',
-    '11:00',
-    '13:00',
-    '14:00',
-    '15:00',
-    '16:00',
-  ];
-
-  static const List<String> _saturdayDefaultSlots = [
-    '08:00',
-    '09:00',
-    '10:00',
-    '11:00',
-    '13:00',
-    '14:00',
-  ];
-
   static bool _isHolidayOrSunday(DateTime date) {
-    return date.weekday == DateTime.sunday || _isBrazilHoliday(date);
+    return ScheduleDateUtils.isHolidayOrSunday(date);
   }
 
   static bool _isBrazilHoliday(DateTime date) {
-    final normalizedDate = DateTime(date.year, date.month, date.day);
-    final year = normalizedDate.year;
-
-    final Set<DateTime> fixedHolidays = {
-      DateTime(year, 1, 1), // Confraternização Universal
-      DateTime(year, 4, 21), // Tiradentes
-      DateTime(year, 5, 1), // Dia do Trabalho
-      DateTime(year, 9, 7), // Independência do Brasil
-      DateTime(year, 10, 12), // Nossa Senhora Aparecida
-      DateTime(year, 11, 2), // Finados
-      DateTime(year, 11, 15), // Proclamação da República
-      DateTime(year, 12, 25), // Natal
-    };
-
-    final easterSunday = _calculateEasterSunday(year);
-    final Set<DateTime> movableHolidays = {
-      easterSunday
-          .subtract(const Duration(days: 48)), // Segunda-feira de Carnaval
-      easterSunday
-          .subtract(const Duration(days: 47)), // Terça-feira de Carnaval
-      easterSunday.subtract(const Duration(days: 2)), // Sexta-feira Santa
-      easterSunday, // Domingo de Páscoa
-      easterSunday.add(const Duration(days: 60)), // Corpus Christi
-    };
-
-    return fixedHolidays.contains(normalizedDate) ||
-        movableHolidays.contains(normalizedDate);
-  }
-
-  static DateTime _calculateEasterSunday(int year) {
-    // Algoritmo de Gauss para calcular a data da Páscoa
-    final a = year % 19;
-    final b = year ~/ 100;
-    final c = year % 100;
-    final d = b ~/ 4;
-    final e = b % 4;
-    final f = (b + 8) ~/ 25;
-    final g = (b - f + 1) ~/ 3;
-    final h = (19 * a + b - d - g + 15) % 30;
-    final i = c ~/ 4;
-    final k = c % 4;
-    final l = (32 + 2 * e + 2 * i - h - k) % 7;
-    final m = (a + 11 * h + 22 * l) ~/ 451;
-    final month = (h + l - 7 * m + 114) ~/ 31;
-    final day = ((h + l - 7 * m + 114) % 31) + 1;
-    return DateTime(year, month, day);
+    return ScheduleDateUtils.isBrazilHoliday(date);
   }
 
   static List<String> _getDefaultSlotsForDate(DateTime date) {
-    switch (date.weekday) {
-      case DateTime.monday:
-      case DateTime.tuesday:
-      case DateTime.wednesday:
-      case DateTime.thursday:
-      case DateTime.friday:
-        return _weekdayDefaultSlots;
-      case DateTime.saturday:
-        return _saturdayDefaultSlots;
-      default:
-        return const [];
-    }
+    return ScheduleDateUtils.getDefaultSlotsForDate(date);
   }
 
   final List<String> _timeSlots = [];
   DateFormat? _dateFormat;
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-
-  // Mapa de preços dos serviços
-  static const Map<String, double> _servicePrices = {
-    'Lavagem SUV': 80.0,
-    'Lavagem SUV Grande': 95.0,
-    'Lavagem Carro Comum': 75.0,
-    'Lavagem Caminhonete com Caçamba': 115.0,
-    'Enceramento': 60.0,
-    'Leva e Traz': 15.0,
-  };
 
   String _serviceTitles = '';
   Color _mainColor = Colors.blue;
@@ -610,87 +488,18 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
   }
 
   double _calculateTotalValue() {
-    double total = 0;
-
-    double? _parsePrice(dynamic raw) {
-      if (raw == null) return null;
-      if (raw is num) return raw.toDouble();
-      if (raw is String) {
-        final s = raw.trim();
-        if (s.isEmpty) return null;
-        // Aceita formatos como "R$ 60,00", "60,00", "60.00"
-        final cleaned = s
-            .replaceAll('R\$', '')
-            .replaceAll(RegExp(r'\s+'), '')
-            .replaceAll('.', '')
-            .replaceAll(',', '.');
-        return double.tryParse(cleaned);
-      }
-      return null;
-    }
-
-    double _getServicePrice(Map<String, dynamic> service) {
-      final title = (service['title'] ?? '').toString().trim();
-      final fixed = _servicePrices[title];
-      if (fixed != null) return fixed;
-
-      // Fallback: se o serviço veio com preço na lista
-      final fromPriceField = _parsePrice(service['price']);
-      if (fromPriceField != null) return fromPriceField;
-
-      // Fallback adicional: alguns fluxos usam "value"
-      final fromValueField = _parsePrice(service['value']);
-      if (fromValueField != null) return fromValueField;
-
-      return 0.0;
-    }
-
-    // Calcular valor dos serviços
-    for (final service in widget.services) {
-      total += _getServicePrice(service);
-    }
-
-    // Adicionar opcional de cera (apenas para serviços de lavagem)
-    bool hasWashingService = widget.services.any((service) {
-      final title = (service['title'] ?? '').toString().toLowerCase();
-      return (title.contains('lavagem suv') ||
-              title.contains('lavagem carro comum') ||
-              title.contains('lavagem caminhonete')) &&
-          !title.contains('leva e traz');
-    });
-
-    if (hasWashingService && _selectedCera != null) {
-      if (_selectedCera == 'carnauba') total += 30.0; // Preço invertido
-      if (_selectedCera == 'jetcera') total += 20.0; // Preço invertido
-      if (_selectedCera == 'manual') total += 60.0; // Preço invertido
-    }
-
-    return total;
+    return SchedulePriceUtils.calculateTotalValue(
+      services: widget.services,
+      selectedCera: _selectedCera,
+    );
   }
 
   bool _hasServicesWithPrice() {
-    for (final service in widget.services) {
-      final title = (service['title'] ?? '').toString().trim();
-      final fixed = _servicePrices[title];
-      if (fixed != null && fixed > 0) return true;
-
-      final fromPriceField = service['price'];
-      if (fromPriceField is String && fromPriceField.contains('R\$')) return true;
-
-      final fromValueField = service['value'];
-      if (fromValueField is num && fromValueField.toDouble() > 0) return true;
-    }
-    return false;
+    return SchedulePriceUtils.hasServicesWithPrice(widget.services);
   }
 
   bool _hasWashingServices() {
-    return widget.services.any((service) {
-      final title = (service['title'] ?? '').toString().toLowerCase();
-      return (title.contains('lavagem suv') ||
-              title.contains('lavagem carro comum') ||
-              title.contains('lavagem caminhonete')) &&
-          !title.contains('leva e traz');
-    });
+    return SchedulePriceUtils.hasWashingServices(widget.services);
   }
 
   Future<void> _initializeDateFormatting() async {
@@ -853,19 +662,7 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   // Função para verificar se o bloco está livre
   bool _isBlockAvailable(DateTime start, Map<String, String> bookedSlots) {
-    debugPrint('=== DEBUG: Verificando disponibilidade do bloco ===');
-    debugPrint('Horário de início: ${DateFormat('HH:mm').format(start)}');
-    debugPrint('Slots ocupados: ${bookedSlots.keys.toList()}');
-
-    final slotStr = DateFormat('HH:mm').format(start);
-
-    if (bookedSlots.containsKey(slotStr)) {
-      debugPrint('=== DEBUG: Slot ocupado: $slotStr ===');
-      return false;
-    }
-
-    debugPrint('=== DEBUG: Slot disponível: $slotStr ===');
-    return true;
+    return ScheduleAvailabilityService.isBlockAvailable(start, bookedSlots);
   }
 
   /// Verifica se o usuário já tem agendamentos pendentes
@@ -878,54 +675,20 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) throw ('Usuário não autenticado');
+      final excludedIds = <String>{
+        if (widget.rescheduleAppointmentId != null)
+          widget.rescheduleAppointmentId!,
+        if (_currentPaymentAppointmentId != null) _currentPaymentAppointmentId!,
+      };
 
-      // Buscar agendamentos pendentes do usuário
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('appointments')
-          .where('userId', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'pending')
-          .get();
-
-      debugPrint(
-          'Encontrados ${querySnapshot.docs.length} agendamentos pendentes do usuário');
-
-      // Filtrar agendamentos pendentes, excluindo o que está sendo reagendado
-      final otherPendingAppointments = querySnapshot.docs.where((doc) {
-        if (widget.rescheduleAppointmentId != null &&
-            doc.id == widget.rescheduleAppointmentId) {
-          return false;
-        }
-        // Se já existe um pending do fluxo de pagamento atual, não bloquear por ele.
-        if (_currentPaymentAppointmentId != null &&
-            doc.id == _currentPaymentAppointmentId) {
-          return false;
-        }
-        return true;
-      }).toList();
-
-      debugPrint(
-          'Agendamentos pendentes (excluindo reagendamento): ${otherPendingAppointments.length}');
-
-      // Considerar apenas pendências "ativas" (hold de 30 minutos).
-      final activePending = otherPendingAppointments.where((doc) {
-        final data = doc.data();
-        return _isPendingHoldActive(data);
-      }).toList();
-
-      if (activePending.isNotEmpty) {
-        final pendingAppointment = activePending.first;
-        final data = pendingAppointment.data();
-        final appointmentDateTime = (data['dateTime'] as Timestamp).toDate();
-        final timeSlot = DateFormat('HH:mm').format(appointmentDateTime);
-        final dateSlot = DateFormat('dd/MM/yyyy').format(appointmentDateTime);
-
-        debugPrint('=== DEBUG: Agendamento pendente encontrado ===');
-        debugPrint('Horário: $timeSlot em $dateSlot');
-        debugPrint('ID do agendamento: ${pendingAppointment.id}');
-
-        throw ('Você já possui um agendamento pendente às $timeSlot em $dateSlot. '
-            'Complete o pagamento do agendamento atual antes de fazer um novo.');
-      }
+      final conflictMessage =
+          await ScheduleAppointmentService.getActivePendingConflictMessage(
+        firestore: _firestore,
+        userId: user.uid,
+        excludedAppointmentIds: excludedIds,
+        isPendingHoldActive: _isPendingHoldActive,
+      );
+      if (conflictMessage != null) throw conflictMessage;
 
       debugPrint('=== DEBUG: Nenhum agendamento pendente encontrado ===');
     } catch (e) {
@@ -1261,75 +1024,19 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
 
   /// Verifica se há sobreposição entre dois horários
   bool _hasTimeOverlap(DateTime newAppointment, DateTime existingAppointment) {
-    // Cada agendamento ocupa 1 hora (60 minutos)
-    const blockDuration = Duration(minutes: 60);
-
-    // Calcular o fim do agendamento existente
-    final existingEnd = existingAppointment.add(blockDuration);
-
-    // Calcular o fim do novo agendamento
-    final newEnd = newAppointment.add(blockDuration);
-
-    // Logs para debug
-    debugPrint('=== DEBUG: Verificação de sobreposição ===');
-    debugPrint(
-        'Novo agendamento: ${DateFormat('dd/MM/yyyy HH:mm').format(newAppointment)} - ${DateFormat('dd/MM/yyyy HH:mm').format(newEnd)}');
-    debugPrint(
-        'Agendamento existente: ${DateFormat('dd/MM/yyyy HH:mm').format(existingAppointment)} - ${DateFormat('dd/MM/yyyy HH:mm').format(existingEnd)}');
-    debugPrint(
-        'Condição 1: novo início < fim existente: ${newAppointment.isBefore(existingEnd)}');
-    debugPrint(
-        'Condição 2: novo fim > início existente: ${newEnd.isAfter(existingAppointment)}');
-
-    // Há sobreposição se:
-    // 1. O novo agendamento começa antes do fim do existente, E
-    // 2. O fim do novo agendamento é depois do início do existente
-    // OU se os horários são exatamente iguais
-    final condition1 = newAppointment.isBefore(existingEnd);
-    final condition2 = newEnd.isAfter(existingAppointment);
-    final condition3 = newAppointment.isAtSameMomentAs(existingAppointment);
-
-    final hasOverlap = (condition1 && condition2) || condition3;
-
-    debugPrint('Condição 1 (novo início < fim existente): $condition1');
-    debugPrint('Condição 2 (novo fim > início existente): $condition2');
-    debugPrint('Condição 3 (horários iguais): $condition3');
-    debugPrint('Resultado final: $hasOverlap');
-    return hasOverlap;
+    return ScheduleAvailabilityService.hasTimeOverlap(
+      newAppointment,
+      existingAppointment,
+    );
   }
 
   /// Verifica se há conflito de tipo de lavagem
   bool _hasLavagemConflict(
       Map<String, dynamic> newServices, Map<String, dynamic> existingServices) {
-    // Verificar se ambos os agendamentos contêm serviços de lavagem
-    final newServicesList = newServices['services'] as List? ?? [];
-    final existingServicesList = existingServices['services'] as List? ?? [];
-
-    // Verificar se há serviços de lavagem no novo agendamento
-    final hasNewLavagem = newServicesList.any((service) {
-      final title = (service['title'] as String? ?? '').toLowerCase();
-      return title.contains('lavagem');
-    });
-
-    // Verificar se há serviços de lavagem no agendamento existente
-    final hasExistingLavagem = existingServicesList.any((service) {
-      final title = (service['title'] as String? ?? '').toLowerCase();
-      return title.contains('lavagem');
-    });
-
-    // Se ambos têm lavagem, há conflito
-    final hasConflict = hasNewLavagem && hasExistingLavagem;
-
-    debugPrint('=== DEBUG: Verificação de conflito de lavagem ===');
-    debugPrint(
-        'Novos serviços: ${newServicesList.map((s) => s['title']).toList()}');
-    debugPrint(
-        'Serviços existentes: ${existingServicesList.map((s) => s['title']).toList()}');
-    debugPrint('Tem lavagem no novo: $hasNewLavagem');
-    debugPrint('Tem lavagem no existente: $hasExistingLavagem');
-    debugPrint('Há conflito: $hasConflict');
-
-    return hasConflict;
+    return ScheduleAvailabilityService.hasLavagemConflict(
+      newServices,
+      existingServices,
+    );
   }
 
   Future<void> _loadBookedTimeSlots() async {
@@ -2546,661 +2253,85 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    if (_userCars.isEmpty)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.directions_car_outlined,
-                                size: 48,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Nenhum carro cadastrado',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ElevatedButton(
-                                onPressed: () async {
-                                  final registered =
-                                      await _ensureRegisteredToAddCar();
-                                  if (!registered) return;
-                                  if (!mounted) return;
+                    ScheduleCarSelectionSection(
+                      userCars: _userCars,
+                      selectedCarId: _selectedCar?['id']?.toString(),
+                      mainColor: _mainColor,
+                      onAddCar: () async {
+                        final registered = await _ensureRegisteredToAddCar();
+                        if (!registered) return;
+                        if (!mounted) return;
 
-                                  final result = await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => const CarsScreen(),
-                                    ),
-                                  );
-                                  if (result == true) {
-                                    _loadUserCars();
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _mainColor,
-                                  foregroundColor: Colors.white,
-                                ),
-                                child: Text(
-                                  'Adicionar Carro',
-                                  style: GoogleFonts.poppins(),
-                                ),
-                              ),
-                            ],
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const CarsScreen(),
                           ),
-                        ),
-                      )
-                    else
-                      Column(
-                        children: [
-                          ..._userCars.map((car) {
-                            final isSelected = car['id'] == _selectedCar?['id'];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 8),
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _selectedCar = car;
-                                  });
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: Checkbox(
-                                          value: isSelected,
-                                          onChanged: (bool? value) {
-                                            setState(() {
-                                              _selectedCar =
-                                                  value! ? car : null;
-                                            });
-                                          },
-                                          activeColor: _mainColor,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              car['name'],
-                                              style: GoogleFonts.poppins(
-                                                fontWeight: FontWeight.w500,
-                                                fontSize: 16,
-                                              ),
-                                            ),
-                                            Text(
-                                              '${car['model']} - ${car['plate']}',
-                                              style: GoogleFonts.poppins(
-                                                color: Colors.grey[600],
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: () async {
-                              final registered =
-                                  await _ensureRegisteredToAddCar();
-                              if (!registered) return;
-                              if (!mounted) return;
-
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const CarsScreen(),
-                                ),
-                              );
-                              if (result == true) {
-                                _loadUserCars();
-                              }
-                            },
-                            icon: Icon(
-                              Icons.add,
-                              color: _mainColor,
-                            ),
-                            label: Text(
-                              'Adicionar outro carro',
-                              style: GoogleFonts.poppins(
-                                color: _mainColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 24),
-                    // Seção de opcionais (apenas para serviços de lavagem)
-                    if (_hasWashingServices()) ...[
-                      Text(
-                        'Opcionais',
-                        style: GoogleFonts.poppins(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Adicionais de Cera',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: _mainColor,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Radio<String>(
-                                    value: 'carnauba',
-                                    // ignore: deprecated_member_use
-                                    groupValue: _selectedCera,
-                                    toggleable: true,
-                                    // ignore: deprecated_member_use
-                                    onChanged: (String? value) {
-                                      setState(() {
-                                        _selectedCera = value;
-                                      });
-                                    },
-                                    activeColor: _mainColor,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Cera de Carnaúba',
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        Text(
-                                          '+R\$ 30,00',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.grey[600],
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  Radio<String>(
-                                    value: 'jetcera',
-                                    // ignore: deprecated_member_use
-                                    groupValue: _selectedCera,
-                                    toggleable: true,
-                                    // ignore: deprecated_member_use
-                                    onChanged: (String? value) {
-                                      setState(() {
-                                        _selectedCera = value;
-                                      });
-                                    },
-                                    activeColor: _mainColor,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Jet-Cera',
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        Text(
-                                          '+R\$ 20,00',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.grey[600],
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  Radio<String>(
-                                    value: 'manual',
-                                    // ignore: deprecated_member_use
-                                    groupValue: _selectedCera,
-                                    toggleable: true,
-                                    // ignore: deprecated_member_use
-                                    onChanged: (String? value) {
-                                      setState(() {
-                                        _selectedCera = value;
-                                      });
-                                    },
-                                    activeColor: _mainColor,
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Enceramento Manual',
-                                          style: GoogleFonts.poppins(
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                        Text(
-                                          '+R\$ 60,00',
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.grey[600],
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Color.fromRGBO(
-                                      (_mainColor.r * 255).round(),
-                                      (_mainColor.g * 255).round(),
-                                      (_mainColor.b * 255).round(),
-                                      0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: Color.fromRGBO(
-                                        (_mainColor.r * 255).round(),
-                                        (_mainColor.g * 255).round(),
-                                        (_mainColor.b * 255).round(),
-                                        0.3),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.info_outline,
-                                      color: Colors.orange,
-                                      size: 20,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        'Selecione apenas um tipo de cera',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          color: _mainColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
-                    Text(
-                      'Data',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () => _selectDate(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _dateFormat?.format(_selectedDate) ??
-                                  '${_selectedDate.day.toString().padLeft(2, '0')}/${_selectedDate.month.toString().padLeft(2, '0')}/${_selectedDate.year}',
-                              style: GoogleFonts.poppins(fontSize: 16),
-                            ),
-                            Icon(
-                              Icons.calendar_today,
-                              color: _mainColor,
-                            ),
-                          ],
-                        ),
-                      ),
+                        );
+                        if (result == true) {
+                          _loadUserCars();
+                        }
+                      },
+                      onSelectCar: (car) {
+                        setState(() {
+                          _selectedCar = car;
+                        });
+                      },
                     ),
                     const SizedBox(height: 24),
-                    Text(
-                      'Horário',
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    if (_timeSlots.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.schedule,
-                              size: 48,
-                              color: Colors.grey.shade600,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Nenhum horário disponível',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Para esta data não há horários habilitados pelo administrador.\nSelecione outra data ou entre em contato conosco.',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          childAspectRatio: 2,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                        itemCount: _timeSlots.length,
-                        itemBuilder: (context, index) {
-                          final timeSlot = _timeSlots[index];
-                          final isSelected = timeSlot == _selectedTime;
-                          final slotTime = DateTime(
-                            _selectedDate.year,
-                            _selectedDate.month,
-                            _selectedDate.day,
-                            int.parse(timeSlot.split(':')[0]),
-                            int.parse(timeSlot.split(':')[1]),
-                          );
-                          final isAvailable =
-                              _isBlockAvailable(slotTime, _bookedTimeSlots);
-                          final isPast = _isSlotInPast(slotTime);
-                          final canSelect = isAvailable && !isPast;
-                          // Não esconder horários - mostrar todos, mas marcar os ocupados
-                          return Tooltip(
-                            message: isPast
-                                ? 'Horário já passou'
-                                : (isAvailable ? 'Disponível' : 'Ocupado'),
-                            child: InkWell(
-                              onTap: canSelect
-                                  ? () async {
-                                      final registered =
-                                          await _ensureRegisteredToPickTime();
-                                      if (!registered) return;
-                                      if (!context.mounted) return;
+                    ScheduleBookingDetailsSection(
+                      hasWashingServices: _hasWashingServices(),
+                      selectedCera: _selectedCera,
+                      mainColor: _mainColor,
+                      onCeraChanged: (value) {
+                        setState(() {
+                          _selectedCera = value;
+                        });
+                      },
+                      selectedDate: _selectedDate,
+                      dateFormat: _dateFormat,
+                      onSelectDate: () => _selectDate(context),
+                      timeSlots: _timeSlots,
+                      selectedTime: _selectedTime,
+                      bookedTimeSlots: _bookedTimeSlots,
+                      isBlockAvailable: _isBlockAvailable,
+                      isSlotInPast: _isSlotInPast,
+                      onSelectSlot: (slotTime, timeSlot) async {
+                        final registered = await _ensureRegisteredToPickTime();
+                        if (!registered) return;
+                        if (!mounted) return;
 
-                                      // Verificar se o horário ainda está disponível
-                                      final isStillAvailable =
-                                          await _isTimeSlotAvailable(slotTime);
-                                      // null = não foi possível verificar (ex.: permission-denied)
-                                      if (isStillAvailable == null) return;
-                                      if (isStillAvailable == false) {
-                                        if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                                'Este horário não está mais disponível. Por favor, escolha outro horário.'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                        return;
-                                      }
-
-                                      if (!context.mounted) return;
-                                      setState(() {
-                                        _selectedTime = timeSlot;
-                                      });
-                                    }
-                                  : null,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: isSelected
-                                      ? _mainColor
-                                      : (canSelect
-                                          ? Colors.white
-                                          : Colors.grey.shade300),
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? _mainColor
-                                        : (canSelect
-                                            ? Colors.grey.shade300
-                                            : Colors.red.shade300),
-                                  ),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    timeSlot,
-                                    style: GoogleFonts.poppins(
-                                      color: isSelected
-                                          ? Colors.white
-                                          : (canSelect
-                                              ? Colors.black87
-                                              : Colors.grey.shade600),
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                              ),
+                        final isStillAvailable =
+                            await _isTimeSlotAvailable(slotTime);
+                        if (isStillAvailable == null) return;
+                        if (isStillAvailable == false) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Este horário não está mais disponível. Por favor, escolha outro horário.'),
+                              backgroundColor: Colors.red,
                             ),
                           );
-                        },
-                      ),
-                    const SizedBox(height: 24),
-                    // Seção de valor total
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Color.fromRGBO(
-                            (_mainColor.r * 255).round(),
-                            (_mainColor.g * 255).round(),
-                            (_mainColor.b * 255).round(),
-                            0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Color.fromRGBO(
-                              (_mainColor.r * 255).round(),
-                              (_mainColor.g * 255).round(),
-                              (_mainColor.b * 255).round(),
-                              0.3),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_hasServicesWithPrice()) ...[
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Valor Total',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  'R\$ ${_calculateTotalValue().toStringAsFixed(2).replaceAll('.', ',')}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                    color: _mainColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ] else ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.orange[50],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.orange[200]!),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.info_outline,
-                                    color: Colors.orange,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Preço será definido após avaliação do veículo - agendamento sem pagamento',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: 14,
-                                        color: Colors.orange[700],
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          if (widget.services.any((service) {
-                            final title =
-                                (service['title'] as String).toLowerCase();
-                            return (title.contains('lavagem suv') ||
-                                    title.contains('lavagem carro comum') ||
-                                    title.contains('lavagem caminhonete')) &&
-                                !title.contains('leva e traz');
-                          })) ...[
-                            if (_selectedCera != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                _selectedCera == 'carnauba'
-                                    ? '• Cera de Carnaúba (+R\$ 30,00)'
-                                    : (_selectedCera == 'jetcera'
-                                        ? '• Jet-Cera (+R\$ 20,00)'
-                                        : '• Enceramento Manual (+R\$ 60,00)'),
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  color: _mainColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ],
-                      ),
+                          return;
+                        }
+
+                        if (!context.mounted) return;
+                        setState(() {
+                          _selectedTime = timeSlot;
+                        });
+                      },
+                      hasServicesWithPrice: _hasServicesWithPrice(),
+                      totalValue: _calculateTotalValue(),
                     ),
                   ],
                 ),
               ),
             ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 16,
-            bottom: 16 + MediaQuery.of(context).viewInsets.bottom,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          child: ElevatedButton(
-            onPressed: _isLoading ? null : _scheduleService,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _mainColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor:
-                          AlwaysStoppedAnimation<Color>(Colors.transparent),
-                    ),
-                  )
-                : Text(
-                    'Confirmar Agendamento',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-        ),
+      bottomNavigationBar: ScheduleConfirmButtonBar(
+        isLoading: _isLoading,
+        mainColor: _mainColor,
+        onConfirm: _scheduleService,
       ),
     );
   }

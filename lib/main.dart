@@ -12,7 +12,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'screens/home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'services/auth_service.dart';
+import 'services/auth/auth_service.dart';
 import 'widgets/offline_bottom_banner.dart';
 
 Future<void> initializeFirebase() async {
