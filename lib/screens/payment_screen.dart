@@ -48,7 +48,8 @@ class PaymentScreen extends StatefulWidget {
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-class _PaymentScreenState extends State<PaymentScreen> {
+class _PaymentScreenState extends State<PaymentScreen>
+    with WidgetsBindingObserver {
   // Cartão permanece no projeto, mas o fluxo está desativado na UI.
   // Exibimos apenas PIX para pagamento.
   static const bool _enableCardPayment = false;
@@ -146,18 +147,31 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     debugPrint('=== DEBUG: PaymentScreen initState ===');
     _onlineSub = ConnectivityEvents.instance.onOnline.listen((_) {
-      // Quando a internet voltar, retornar para a tela anterior.
+      // Quando a internet voltar, manter o usuário na tela de pagamento
+      // e apenas tentar atualizar o status atual.
       if (!mounted) return;
-      if (Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
-      }
+      unawaited(_checkPixPaymentStatus());
     });
     // Inicializar imediatamente sem delay
     // Gera MP_DEVICE_SESSION_ID no mobile via WebView invisível (requisito do MP).
     unawaited(_ensureDeviceSessionIdMobile());
     _initializePayment();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (_isDisposed) return;
+
+    if (state == AppLifecycleState.resumed) {
+      // Ao voltar do background, mantemos o usuário na tela de pagamento
+      // e retomamos a checagem do status, sem forçar navegação para trás.
+      if (_paymentId != null && (_pixQrCode?.isNotEmpty ?? false)) {
+        _startStatusPolling();
+      }
+    }
   }
 
   // O destino do "voltar" é decidido pela tela anterior (ex.: reagendar volta ao histórico).
@@ -248,6 +262,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   @override
   void dispose() {
     _isDisposed = true;
+    WidgetsBinding.instance.removeObserver(this);
     _statusTimer?.cancel();
     _onlineSub?.cancel();
     super.dispose();
@@ -788,9 +803,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         title: const Text('Pagamento'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () async {
+          onPressed: () {
             if (!mounted) return;
-            Navigator.of(context).pop();
+            Navigator.of(context).maybePop();
           },
         ),
       ),

@@ -4,7 +4,6 @@ class ScheduleServiceConfig {
   static const Duration pendingHoldDuration = Duration(minutes: 30);
 
   static const List<String> weekdayDefaultSlots = [
-    '08:00',
     '09:00',
     '10:00',
     '11:00',

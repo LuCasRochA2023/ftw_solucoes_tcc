@@ -502,6 +502,41 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     return SchedulePriceUtils.hasWashingServices(widget.services);
   }
 
+  bool _shouldWarnAboutCategoryPricing() {
+    return widget.services.any((service) {
+      final title = (service['title'] as String? ?? '').toLowerCase();
+      return title.contains('lavagem suv') ||
+          title.contains('lavagem carro comum') ||
+          title.contains('lavagem caminhonete');
+    });
+  }
+
+  Future<bool> _confirmCategoryPricingWarning() async {
+    if (!_shouldWarnAboutCategoryPricing()) return true;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Aviso sobre categoria do veiculo'),
+        content: const Text(
+          'Ao confirmar este agendamento, caso a categoria do seu carro seja diferente da selecionada, sera cobrado o valor correspondente a categoria correta no momento da lavagem. Deseja continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+
+    return confirmed ?? false;
+  }
+
   Future<void> _initializeDateFormatting() async {
     await initializeDateFormatting('pt_BR', null);
     _dateFormat = DateFormat('dd/MM/yyyy', 'pt_BR');
@@ -1291,6 +1326,9 @@ class _ScheduleServiceScreenState extends State<ScheduleServiceScreen> {
     // Só permite agendar se o perfil estiver completo.
     final profileOk = await _ensureProfileComplete();
     if (!profileOk) return;
+
+    final confirmedCategoryWarning = await _confirmCategoryPricingWarning();
+    if (!confirmedCategoryWarning) return;
 
     // Verificar saldo antes de agendar
     await _checkBalanceAndSchedule();
